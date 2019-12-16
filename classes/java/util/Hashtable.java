@@ -133,36 +133,31 @@ public class Hashtable<K,V>
     implements Map<K,V>, Cloneable, java.io.Serializable {
 
     /**
-     * The hash table data.
+     * Entry数组
      */
     private transient Entry<?,?>[] table;
 
     /**
-     * The total number of entries in the hash table.
+     * hashtable的元素大小
      */
     private transient int count;
 
     /**
-     * The table is rehashed when its size exceeds this threshold.  (The
-     * value of this field is (int)(capacity * loadFactor).)
+     * 扩容阈值
      *
      * @serial
      */
     private int threshold;
 
     /**
-     * The load factor for the hashtable.
+     * 负载因子
      *
      * @serial
      */
     private float loadFactor;
 
     /**
-     * The number of times this Hashtable has been structurally modified
-     * Structural modifications are those that change the number of entries in
-     * the Hashtable or otherwise modify its internal structure (e.g.,
-     * rehash).  This field is used to make iterators on Collection-views of
-     * the Hashtable fail-fast.  (See ConcurrentModificationException).
+     * 记录hashtable的修改次数
      */
     private transient int modCount = 0;
 
@@ -170,13 +165,7 @@ public class Hashtable<K,V>
     private static final long serialVersionUID = 1421746759512286392L;
 
     /**
-     * Constructs a new, empty hashtable with the specified initial
-     * capacity and the specified load factor.
-     *
-     * @param      initialCapacity   the initial capacity of the hashtable.
-     * @param      loadFactor        the load factor of the hashtable.
-     * @exception  IllegalArgumentException  if the initial capacity is less
-     *             than zero, or if the load factor is nonpositive.
+     * Hashtable的构造函数，参数为初始容量（默认值为11）和负载因子（默认值为0.75）
      */
     public Hashtable(int initialCapacity, float loadFactor) {
         if (initialCapacity < 0)
@@ -184,7 +173,7 @@ public class Hashtable<K,V>
                                                initialCapacity);
         if (loadFactor <= 0 || Float.isNaN(loadFactor))
             throw new IllegalArgumentException("Illegal Load: "+loadFactor);
-
+        //hashtable的容量并没有和HashMap一样，为2的幂
         if (initialCapacity==0)
             initialCapacity = 1;
         this.loadFactor = loadFactor;
@@ -227,9 +216,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Returns the number of keys in this hashtable.
-     *
-     * @return  the number of keys in this hashtable.
+     * 所有的方法都用synchronized修饰，保证线程安全
      */
     public synchronized int size() {
         return count;
@@ -274,9 +261,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Tests if some key maps into the specified value in this hashtable.
-     * This operation is more expensive than the {@link #containsKey
-     * containsKey} method.
+     * 获取是否包含某个值 value为什么不适用泛型？
      *
      * <p>Note that this method is identical in functionality to
      * {@link #containsValue containsValue}, (which is part of the
@@ -293,7 +278,7 @@ public class Hashtable<K,V>
         if (value == null) {
             throw new NullPointerException();
         }
-
+        //遍历数组，再对Entry进行遍历，逐个比较
         Entry<?,?> tab[] = table;
         for (int i = tab.length ; i-- > 0 ;) {
             for (Entry<?,?> e = tab[i] ; e != null ; e = e.next) {
@@ -334,6 +319,7 @@ public class Hashtable<K,V>
     public synchronized boolean containsKey(Object key) {
         Entry<?,?> tab[] = table;
         int hash = key.hashCode();
+        //hash & 0x7FFFFFFF 的作用是将哈希值转成正数，再取余
         int index = (hash & 0x7FFFFFFF) % tab.length;
         for (Entry<?,?> e = tab[index] ; e != null ; e = e.next) {
             if ((e.hash == hash) && e.key.equals(key)) {
@@ -344,19 +330,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Returns the value to which the specified key is mapped,
-     * or {@code null} if this map contains no mapping for the key.
-     *
-     * <p>More formally, if this map contains a mapping from a key
-     * {@code k} to a value {@code v} such that {@code (key.equals(k))},
-     * then this method returns {@code v}; otherwise it returns
-     * {@code null}.  (There can be at most one such mapping.)
-     *
-     * @param key the key whose associated value is to be returned
-     * @return the value to which the specified key is mapped, or
-     *         {@code null} if this map contains no mapping for the key
-     * @throws NullPointerException if the specified key is null
-     * @see     #put(Object, Object)
+     * 根据key 查询 对应的值
      */
     @SuppressWarnings("unchecked")
     public synchronized V get(Object key) {
@@ -380,18 +354,14 @@ public class Hashtable<K,V>
     private static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
 
     /**
-     * Increases the capacity of and internally reorganizes this
-     * hashtable, in order to accommodate and access its entries more
-     * efficiently.  This method is called automatically when the
-     * number of keys in the hashtable exceeds this hashtable's capacity
-     * and load factor.
+     * hashtable 没有独立的resize过程，扩容也在rehash操作里
      */
     @SuppressWarnings("unchecked")
     protected void rehash() {
         int oldCapacity = table.length;
         Entry<?,?>[] oldMap = table;
 
-        // overflow-conscious code
+        // 计算新的容量，如果已经达到最大容量，则使用最大容量
         int newCapacity = (oldCapacity << 1) + 1;
         if (newCapacity - MAX_ARRAY_SIZE > 0) {
             if (oldCapacity == MAX_ARRAY_SIZE)
@@ -402,11 +372,15 @@ public class Hashtable<K,V>
         Entry<?,?>[] newMap = new Entry<?,?>[newCapacity];
 
         modCount++;
+        //计算新扩容阈值
         threshold = (int)Math.min(newCapacity * loadFactor, MAX_ARRAY_SIZE + 1);
         table = newMap;
 
+        //真正的rehash部分
         for (int i = oldCapacity ; i-- > 0 ;) {
+            //就所有旧数据重新计算index，并移动到新的数组中去
             for (Entry<K,V> old = (Entry<K,V>)oldMap[i] ; old != null ; ) {
+                //旧table的链表遍历顺序是从头至尾，但是每次往新的table移动时，会添加在链表表头，也就是说无法保持链表顺序
                 Entry<K,V> e = old;
                 old = old.next;
 
@@ -421,6 +395,7 @@ public class Hashtable<K,V>
         modCount++;
 
         Entry<?,?> tab[] = table;
+        //是否超过阈值需要rehash
         if (count >= threshold) {
             // Rehash the table if the threshold is exceeded
             rehash();
@@ -430,7 +405,7 @@ public class Hashtable<K,V>
             index = (hash & 0x7FFFFFFF) % tab.length;
         }
 
-        // Creates the new entry.
+        //创建新Entry，并添加至链表的表头
         @SuppressWarnings("unchecked")
         Entry<K,V> e = (Entry<K,V>) tab[index];
         tab[index] = new Entry<>(hash, key, value, e);
@@ -438,12 +413,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Maps the specified <code>key</code> to the specified
-     * <code>value</code> in this hashtable. Neither the key nor the
-     * value can be <code>null</code>. <p>
-     *
-     * The value can be retrieved by calling the <code>get</code> method
-     * with a key that is equal to the original key.
+     * 往hashtable添加新键值对或是更新值
      *
      * @param      key     the hashtable key
      * @param      value   the value
@@ -467,20 +437,20 @@ public class Hashtable<K,V>
         @SuppressWarnings("unchecked")
         Entry<K,V> entry = (Entry<K,V>)tab[index];
         for(; entry != null ; entry = entry.next) {
+            //键值对如果已经存在，则更新，并返回旧值
             if ((entry.hash == hash) && entry.key.equals(key)) {
                 V old = entry.value;
                 entry.value = value;
                 return old;
             }
         }
-
+        //否则添加新Entry
         addEntry(hash, key, value, index);
         return null;
     }
 
     /**
-     * Removes the key (and its corresponding value) from this
-     * hashtable. This method does nothing if the key is not in the hashtable.
+     * 根据key，移除相关键值对，并将值返回
      *
      * @param   key   the key that needs to be removed
      * @return  the value to which the key had been mapped in this hashtable,
@@ -495,6 +465,7 @@ public class Hashtable<K,V>
         Entry<K,V> e = (Entry<K,V>)tab[index];
         for(Entry<K,V> prev = null ; e != null ; prev = e, e = e.next) {
             if ((e.hash == hash) && e.key.equals(key)) {
+                //更新链表
                 modCount++;
                 if (prev != null) {
                     prev.next = e.next;
@@ -502,6 +473,7 @@ public class Hashtable<K,V>
                     tab[index] = e.next;
                 }
                 count--;
+                //返回旧值，释放引用
                 V oldValue = e.value;
                 e.value = null;
                 return oldValue;
@@ -511,9 +483,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Copies all of the mappings from the specified map to this hashtable.
-     * These mappings will replace any mappings that this hashtable had for any
-     * of the keys currently in the specified map.
+     * 从另一个Map
      *
      * @param t mappings to be stored in this map
      * @throws NullPointerException if the specified map is null
@@ -525,7 +495,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Clears this hashtable so that it contains no keys.
+     * 清空hashtable
      */
     public synchronized void clear() {
         Entry<?,?> tab[] = table;
@@ -536,9 +506,7 @@ public class Hashtable<K,V>
     }
 
     /**
-     * Creates a shallow copy of this hashtable. All the structure of the
-     * hashtable itself is copied, but the keys and values are not cloned.
-     * This is a relatively expensive operation.
+     * 浅拷贝，只复制到table和entry对象，但key和value仍旧是引用旧对象
      *
      * @return  a clone of the hashtable
      */
