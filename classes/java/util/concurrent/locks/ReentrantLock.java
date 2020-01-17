@@ -123,19 +123,21 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         abstract void lock();
 
         /**
-         * Performs non-fair tryLock.  tryAcquire is implemented in
-         * subclasses, but both need nonfair try for trylock method.
+         * 非公平性的尝试上锁
          */
         final boolean nonfairTryAcquire(int acquires) {
             final Thread current = Thread.currentThread();
             int c = getState();
-            if (c == 0) {
-                if (compareAndSetState(0, acquires)) {
+            if (c == 0) { //说明锁未被持有
+                //公平和非公平抢锁的区别在于 公平抢锁时，即使锁未被持有，线程也要考虑AQS队列前是否有其他线程排在该线程之前
+                if (compareAndSetState(0, acquires)) { //采用CAS尝试抢锁
+                    //抢占成功，设置锁的持有线程
                     setExclusiveOwnerThread(current);
                     return true;
                 }
             }
-            else if (current == getExclusiveOwnerThread()) {
+            else if (current == getExclusiveOwnerThread()) { //可重入的情况
+                //更新锁的state
                 int nextc = c + acquires;
                 if (nextc < 0) // overflow
                     throw new Error("Maximum lock count exceeded");
@@ -215,33 +217,39 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     }
 
     /**
-     * Sync object for fair locks
+     * 公平锁的实现，先等待的对象先拿到锁
      */
     static final class FairSync extends Sync {
         private static final long serialVersionUID = -3000897897090466540L;
 
+        //Lock对象会将lock()委派给Sync对象执行
         final void lock() {
             acquire(1);
         }
 
         /**
-         * Fair version of tryAcquire.  Don't grant access unless
-         * recursive call or no waiters or is first.
+         * 尝试获取公平锁
          */
         protected final boolean tryAcquire(int acquires) {
             final Thread current = Thread.currentThread();
             int c = getState();
-            if (c == 0) {
+            if (c == 0) {//未被持有
+                //因为是公平锁，要确认之前是否有节点在等待锁， 如果没有则CAS设置state
                 if (!hasQueuedPredecessors() &&
                     compareAndSetState(0, acquires)) {
+                    //if表达式中含有CAS，因此能进到分支表示是线程安全的
+                    //设置锁的持有线程
                     setExclusiveOwnerThread(current);
                     return true;
                 }
             }
-            else if (current == getExclusiveOwnerThread()) {
+            else if (current == getExclusiveOwnerThread()) { //锁已经被持有，确认持有者是否是当前线程
+                //这里的分支只有锁的持有者能进，因此也是线程安全的
+                //更新锁被持有次数
                 int nextc = c + acquires;
-                if (nextc < 0)
+                if (nextc < 0) //发生溢出的处理
                     throw new Error("Maximum lock count exceeded");
+                //更新state值，
                 setState(nextc);
                 return true;
             }
@@ -250,192 +258,42 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     }
 
     /**
-     * Creates an instance of {@code ReentrantLock}.
-     * This is equivalent to using {@code ReentrantLock(false)}.
+     * 默认的构造函数创建非公平锁
      */
     public ReentrantLock() {
         sync = new NonfairSync();
     }
 
     /**
-     * Creates an instance of {@code ReentrantLock} with the
-     * given fairness policy.
-     *
-     * @param fair {@code true} if this lock should use a fair ordering policy
+     * 通过fair参数 控制公平锁还是非公平锁
      */
     public ReentrantLock(boolean fair) {
         sync = fair ? new FairSync() : new NonfairSync();
     }
 
     /**
-     * Acquires the lock.
-     *
-     * <p>Acquires the lock if it is not held by another thread and returns
-     * immediately, setting the lock hold count to one.
-     *
-     * <p>If the current thread already holds the lock then the hold
-     * count is incremented by one and the method returns immediately.
-     *
-     * <p>If the lock is held by another thread then the
-     * current thread becomes disabled for thread scheduling
-     * purposes and lies dormant until the lock has been acquired,
-     * at which time the lock hold count is set to one.
+     * 获取锁，阻塞直到上锁成功
      */
     public void lock() {
         sync.lock();
     }
 
     /**
-     * Acquires the lock unless the current thread is
-     * {@linkplain Thread#interrupt interrupted}.
-     *
-     * <p>Acquires the lock if it is not held by another thread and returns
-     * immediately, setting the lock hold count to one.
-     *
-     * <p>If the current thread already holds this lock then the hold count
-     * is incremented by one and the method returns immediately.
-     *
-     * <p>If the lock is held by another thread then the
-     * current thread becomes disabled for thread scheduling
-     * purposes and lies dormant until one of two things happens:
-     *
-     * <ul>
-     *
-     * <li>The lock is acquired by the current thread; or
-     *
-     * <li>Some other thread {@linkplain Thread#interrupt interrupts} the
-     * current thread.
-     *
-     * </ul>
-     *
-     * <p>If the lock is acquired by the current thread then the lock hold
-     * count is set to one.
-     *
-     * <p>If the current thread:
-     *
-     * <ul>
-     *
-     * <li>has its interrupted status set on entry to this method; or
-     *
-     * <li>is {@linkplain Thread#interrupt interrupted} while acquiring
-     * the lock,
-     *
-     * </ul>
-     *
-     * then {@link InterruptedException} is thrown and the current thread's
-     * interrupted status is cleared.
-     *
-     * <p>In this implementation, as this method is an explicit
-     * interruption point, preference is given to responding to the
-     * interrupt over normal or reentrant acquisition of the lock.
-     *
-     * @throws InterruptedException if the current thread is interrupted
+     * 获取锁，阻塞直到上锁成功，但是外部可控制中断
      */
     public void lockInterruptibly() throws InterruptedException {
         sync.acquireInterruptibly(1);
     }
 
     /**
-     * Acquires the lock only if it is not held by another thread at the time
-     * of invocation.
-     *
-     * <p>Acquires the lock if it is not held by another thread and
-     * returns immediately with the value {@code true}, setting the
-     * lock hold count to one. Even when this lock has been set to use a
-     * fair ordering policy, a call to {@code tryLock()} <em>will</em>
-     * immediately acquire the lock if it is available, whether or not
-     * other threads are currently waiting for the lock.
-     * This &quot;barging&quot; behavior can be useful in certain
-     * circumstances, even though it breaks fairness. If you want to honor
-     * the fairness setting for this lock, then use
-     * {@link #tryLock(long, TimeUnit) tryLock(0, TimeUnit.SECONDS) }
-     * which is almost equivalent (it also detects interruption).
-     *
-     * <p>If the current thread already holds this lock then the hold
-     * count is incremented by one and the method returns {@code true}.
-     *
-     * <p>If the lock is held by another thread then this method will return
-     * immediately with the value {@code false}.
-     *
-     * @return {@code true} if the lock was free and was acquired by the
-     *         current thread, or the lock was already held by the current
-     *         thread; and {@code false} otherwise
+     * 尝试获取锁，不阻塞，直接返回结果（注意，此方法就算在公平锁的情况下，也不会考虑AQS维护的队列，只要锁未被占用，就会去尝试获取锁）
      */
     public boolean tryLock() {
         return sync.nonfairTryAcquire(1);
     }
 
     /**
-     * Acquires the lock if it is not held by another thread within the given
-     * waiting time and the current thread has not been
-     * {@linkplain Thread#interrupt interrupted}.
-     *
-     * <p>Acquires the lock if it is not held by another thread and returns
-     * immediately with the value {@code true}, setting the lock hold count
-     * to one. If this lock has been set to use a fair ordering policy then
-     * an available lock <em>will not</em> be acquired if any other threads
-     * are waiting for the lock. This is in contrast to the {@link #tryLock()}
-     * method. If you want a timed {@code tryLock} that does permit barging on
-     * a fair lock then combine the timed and un-timed forms together:
-     *
-     *  <pre> {@code
-     * if (lock.tryLock() ||
-     *     lock.tryLock(timeout, unit)) {
-     *   ...
-     * }}</pre>
-     *
-     * <p>If the current thread
-     * already holds this lock then the hold count is incremented by one and
-     * the method returns {@code true}.
-     *
-     * <p>If the lock is held by another thread then the
-     * current thread becomes disabled for thread scheduling
-     * purposes and lies dormant until one of three things happens:
-     *
-     * <ul>
-     *
-     * <li>The lock is acquired by the current thread; or
-     *
-     * <li>Some other thread {@linkplain Thread#interrupt interrupts}
-     * the current thread; or
-     *
-     * <li>The specified waiting time elapses
-     *
-     * </ul>
-     *
-     * <p>If the lock is acquired then the value {@code true} is returned and
-     * the lock hold count is set to one.
-     *
-     * <p>If the current thread:
-     *
-     * <ul>
-     *
-     * <li>has its interrupted status set on entry to this method; or
-     *
-     * <li>is {@linkplain Thread#interrupt interrupted} while
-     * acquiring the lock,
-     *
-     * </ul>
-     * then {@link InterruptedException} is thrown and the current thread's
-     * interrupted status is cleared.
-     *
-     * <p>If the specified waiting time elapses then the value {@code false}
-     * is returned.  If the time is less than or equal to zero, the method
-     * will not wait at all.
-     *
-     * <p>In this implementation, as this method is an explicit
-     * interruption point, preference is given to responding to the
-     * interrupt over normal or reentrant acquisition of the lock, and
-     * over reporting the elapse of the waiting time.
-     *
-     * @param timeout the time to wait for the lock
-     * @param unit the time unit of the timeout argument
-     * @return {@code true} if the lock was free and was acquired by the
-     *         current thread, or the lock was already held by the current
-     *         thread; and {@code false} if the waiting time elapsed before
-     *         the lock could be acquired
-     * @throws InterruptedException if the current thread is interrupted
-     * @throws NullPointerException if the time unit is null
+     * 在规定时间内阻塞尝试获取锁，超时仍未成功则返回失败
      */
     public boolean tryLock(long timeout, TimeUnit unit)
             throws InterruptedException {
@@ -443,15 +301,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     }
 
     /**
-     * Attempts to release this lock.
-     *
-     * <p>If the current thread is the holder of this lock then the hold
-     * count is decremented.  If the hold count is now zero then the lock
-     * is released.  If the current thread is not the holder of this
-     * lock then {@link IllegalMonitorStateException} is thrown.
-     *
-     * @throws IllegalMonitorStateException if the current thread does not
-     *         hold this lock
+     * 释放锁
      */
     public void unlock() {
         sync.release(1);
