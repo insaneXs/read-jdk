@@ -155,12 +155,13 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  */
 public class CountDownLatch {
     /**
-     * Synchronization control For CountDownLatch.
-     * Uses AQS state to represent count.
+     * CountDownLatch内部的AQS实现
      */
     private static final class Sync extends AbstractQueuedSynchronizer {
         private static final long serialVersionUID = 4982264981922014374L;
 
+        //锁初始化成默认被持有count次
+        //count即为CountDownLatch构造函数中传入的count
         Sync(int count) {
             setState(count);
         }
@@ -170,6 +171,7 @@ public class CountDownLatch {
         }
 
         protected int tryAcquireShared(int acquires) {
+            //getState == 0 说明锁未被获取，此时可以已共享模式获取锁，返回正值，否则返回负值
             return (getState() == 0) ? 1 : -1;
         }
 
@@ -197,6 +199,7 @@ public class CountDownLatch {
      */
     public CountDownLatch(int count) {
         if (count < 0) throw new IllegalArgumentException("count < 0");
+        //锁的state初始化成count
         this.sync = new Sync(count);
     }
 
