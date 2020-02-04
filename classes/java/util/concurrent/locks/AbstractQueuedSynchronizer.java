@@ -955,31 +955,47 @@ public abstract class AbstractQueuedSynchronizer
      * @param nanosTimeout max wait time
      * @return {@code true} if acquired
      */
+    /**
+     * 在指定时间内以共享方式获取锁
+     * @param arg
+     * @param nanosTimeout
+     * @return
+     * @throws InterruptedException
+     */
     private boolean doAcquireSharedNanos(int arg, long nanosTimeout)
             throws InterruptedException {
         if (nanosTimeout <= 0L)
             return false;
         final long deadline = System.nanoTime() + nanosTimeout;
+        //调用该方法时，说明先尝试过获取了锁，并且尝试获取锁失败
+        //因此此时需要被添加进节点
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             for (;;) {
                 final Node p = node.predecessor();
-                if (p == head) {
+                if (p == head) { //如果前继节点已经是队列的头节点
+                    //则说明该节点需要被唤醒
+                    //此时再去尝试获取锁
                     int r = tryAcquireShared(arg);
-                    if (r >= 0) {
+                    if (r >= 0) { //如果成功（也可能因为非公平锁的性质导致头节点唤醒失败）
+                        //则更新队列的头节点，并唤醒之后的节点
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         failed = false;
                         return true;
                     }
                 }
+                //唤醒后线程仍然获取失败
                 nanosTimeout = deadline - System.nanoTime();
+                //先计算是否超时
                 if (nanosTimeout <= 0L)
                     return false;
+                //是否需要继续挂起线程
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     nanosTimeout > spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
+                //线程是否被中断醒来
                 if (Thread.interrupted())
                     throw new InterruptedException();
             }

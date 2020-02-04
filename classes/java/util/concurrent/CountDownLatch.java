@@ -175,14 +175,20 @@ public class CountDownLatch {
             return (getState() == 0) ? 1 : -1;
         }
 
+        //尝试释放锁
         protected boolean tryReleaseShared(int releases) {
             // Decrement count; signal when transition to zero
             for (;;) {
+                //获取当前state
                 int c = getState();
+                //如果已经等于0 说明栅栏已经打开，不需要再释放
                 if (c == 0)
                     return false;
+                //释放一次
                 int nextc = c-1;
+                //采用CAS设置state值
                 if (compareAndSetState(c, nextc))
+                    //如果设置成功，则看state是否已经等于0
                     return nextc == 0;
             }
         }

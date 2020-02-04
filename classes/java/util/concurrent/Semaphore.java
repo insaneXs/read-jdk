@@ -153,6 +153,12 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  * @since 1.5
  * @author Doug Lea
  */
+
+/**
+ * 信号量、凭证管理器
+ * 管理N个凭证，每次成功acquire会发放一个凭证，而release会归还一个凭证
+ * 当凭证发完时，线程会在acquire阻塞，或是返回获取失败
+ */
 public class Semaphore implements java.io.Serializable {
     private static final long serialVersionUID = -3222578661600680210L;
     /** All mechanics via AbstractQueuedSynchronizer subclass */
@@ -174,23 +180,38 @@ public class Semaphore implements java.io.Serializable {
             return getState();
         }
 
+        //非公平方式获取锁
+        //返回值 >=0 说明尝试以共享方式获取锁成功
         final int nonfairTryAcquireShared(int acquires) {
+            //因为此时无法保证线程安全，因此要以CAS失败重试的方式更新AQS的state值
             for (;;) {
+                //当前state值（表示当前剩余的凭证）
                 int available = getState();
+                //此次acquire之后仍剩余的凭证
                 int remaining = available - acquires;
+                //凭证不足 或是 CAS设置成功，说明尝试获取结束
+                //尝试获取的结果 则通过返回值判断
                 if (remaining < 0 ||
                     compareAndSetState(available, remaining))
                     return remaining;
             }
         }
 
+        /**
+         * 尝试释放锁
+         * @param releases
+         * @return
+         */
         protected final boolean tryReleaseShared(int releases) {
             for (;;) {
+                //当前state值
                 int current = getState();
                 int next = current + releases;
                 if (next < current) // overflow
                     throw new Error("Maximum permit count exceeded");
+                //采用CAS失败重试 更新state
                 if (compareAndSetState(current, next))
+                    //如果CAS设置成功，则说明有凭证被归还，开始唤醒等待的节点
                     return true;
             }
         }
@@ -225,6 +246,7 @@ public class Semaphore implements java.io.Serializable {
             super(permits);
         }
 
+        //Semaphore中NonfairSync的尝试获取锁的实现
         protected int tryAcquireShared(int acquires) {
             return nonfairTryAcquireShared(acquires);
         }
@@ -254,368 +276,106 @@ public class Semaphore implements java.io.Serializable {
     }
 
     /**
-     * Creates a {@code Semaphore} with the given number of
-     * permits and nonfair fairness setting.
-     *
-     * @param permits the initial number of permits available.
-     *        This value may be negative, in which case releases
-     *        must occur before any acquires will be granted.
+     * 构造函数（采用默认非公平的AQS队列实现）
+     * @param permits 管理的凭证数
      */
     public Semaphore(int permits) {
         sync = new NonfairSync(permits);
     }
 
+
     /**
-     * Creates a {@code Semaphore} with the given number of
-     * permits and the given fairness setting.
-     *
-     * @param permits the initial number of permits available.
-     *        This value may be negative, in which case releases
-     *        must occur before any acquires will be granted.
-     * @param fair {@code true} if this semaphore will guarantee
-     *        first-in first-out granting of permits under contention,
-     *        else {@code false}
+     * 构造函数
+     * @param permits 管理凭证数
+     * @param fair 是否以公平的AQS方式实现
      */
     public Semaphore(int permits, boolean fair) {
         sync = fair ? new FairSync(permits) : new NonfairSync(permits);
     }
 
+
     /**
-     * Acquires a permit from this semaphore, blocking until one is
-     * available, or the thread is {@linkplain Thread#interrupt interrupted}.
-     *
-     * <p>Acquires a permit, if one is available and returns immediately,
-     * reducing the number of available permits by one.
-     *
-     * <p>If no permit is available then the current thread becomes
-     * disabled for thread scheduling purposes and lies dormant until
-     * one of two things happens:
-     * <ul>
-     * <li>Some other thread invokes the {@link #release} method for this
-     * semaphore and the current thread is next to be assigned a permit; or
-     * <li>Some other thread {@linkplain Thread#interrupt interrupts}
-     * the current thread.
-     * </ul>
-     *
-     * <p>If the current thread:
-     * <ul>
-     * <li>has its interrupted status set on entry to this method; or
-     * <li>is {@linkplain Thread#interrupt interrupted} while waiting
-     * for a permit,
-     * </ul>
-     * then {@link InterruptedException} is thrown and the current thread's
-     * interrupted status is cleared.
-     *
-     * @throws InterruptedException if the current thread is interrupted
+     * 尝试获取凭证
+     * 如果凭证还有，则获取成功
+     * 如果凭证已经发放完，则阻塞直到凭证归还
+     * 如果方法执行过程中，线程被中断，则抛出InterruptedException异常
+     * @throws InterruptedException
      */
     public void acquire() throws InterruptedException {
         sync.acquireSharedInterruptibly(1);
     }
 
+
     /**
-     * Acquires a permit from this semaphore, blocking until one is
-     * available.
-     *
-     * <p>Acquires a permit, if one is available and returns immediately,
-     * reducing the number of available permits by one.
-     *
-     * <p>If no permit is available then the current thread becomes
-     * disabled for thread scheduling purposes and lies dormant until
-     * some other thread invokes the {@link #release} method for this
-     * semaphore and the current thread is next to be assigned a permit.
-     *
-     * <p>If the current thread is {@linkplain Thread#interrupt interrupted}
-     * while waiting for a permit then it will continue to wait, but the
-     * time at which the thread is assigned a permit may change compared to
-     * the time it would have received the permit had no interruption
-     * occurred.  When the thread does return from this method its interrupt
-     * status will be set.
+     * 尝试获取凭证，且过程中不响应中断
      */
     public void acquireUninterruptibly() {
         sync.acquireShared(1);
     }
 
+
     /**
-     * Acquires a permit from this semaphore, only if one is available at the
-     * time of invocation.
-     *
-     * <p>Acquires a permit, if one is available and returns immediately,
-     * with the value {@code true},
-     * reducing the number of available permits by one.
-     *
-     * <p>If no permit is available then this method will return
-     * immediately with the value {@code false}.
-     *
-     * <p>Even when this semaphore has been set to use a
-     * fair ordering policy, a call to {@code tryAcquire()} <em>will</em>
-     * immediately acquire a permit if one is available, whether or not
-     * other threads are currently waiting.
-     * This &quot;barging&quot; behavior can be useful in certain
-     * circumstances, even though it breaks fairness. If you want to honor
-     * the fairness setting, then use
-     * {@link #tryAcquire(long, TimeUnit) tryAcquire(0, TimeUnit.SECONDS) }
-     * which is almost equivalent (it also detects interruption).
-     *
-     * @return {@code true} if a permit was acquired and {@code false}
-     *         otherwise
+     * 尝试以共享方式获取锁，且不阻塞
+     * @return
      */
     public boolean tryAcquire() {
+        //只通过nonfairTryAcquireShared()方法尝试一次获取
+        //并没有调用doAcquireShared方法，因此线程并不会被添加到阻塞队列
         return sync.nonfairTryAcquireShared(1) >= 0;
     }
 
     /**
-     * Acquires a permit from this semaphore, if one becomes available
-     * within the given waiting time and the current thread has not
-     * been {@linkplain Thread#interrupt interrupted}.
-     *
-     * <p>Acquires a permit, if one is available and returns immediately,
-     * with the value {@code true},
-     * reducing the number of available permits by one.
-     *
-     * <p>If no permit is available then the current thread becomes
-     * disabled for thread scheduling purposes and lies dormant until
-     * one of three things happens:
-     * <ul>
-     * <li>Some other thread invokes the {@link #release} method for this
-     * semaphore and the current thread is next to be assigned a permit; or
-     * <li>Some other thread {@linkplain Thread#interrupt interrupts}
-     * the current thread; or
-     * <li>The specified waiting time elapses.
-     * </ul>
-     *
-     * <p>If a permit is acquired then the value {@code true} is returned.
-     *
-     * <p>If the current thread:
-     * <ul>
-     * <li>has its interrupted status set on entry to this method; or
-     * <li>is {@linkplain Thread#interrupt interrupted} while waiting
-     * to acquire a permit,
-     * </ul>
-     * then {@link InterruptedException} is thrown and the current thread's
-     * interrupted status is cleared.
-     *
-     * <p>If the specified waiting time elapses then the value {@code false}
-     * is returned.  If the time is less than or equal to zero, the method
-     * will not wait at all.
-     *
-     * @param timeout the maximum time to wait for a permit
-     * @param unit the time unit of the {@code timeout} argument
-     * @return {@code true} if a permit was acquired and {@code false}
-     *         if the waiting time elapsed before a permit was acquired
-     * @throws InterruptedException if the current thread is interrupted
+     * 在指定时间内尝试获取锁
+     * @param timeout
+     * @param unit
+     * @return
+     * @throws InterruptedException
      */
     public boolean tryAcquire(long timeout, TimeUnit unit)
         throws InterruptedException {
         return sync.tryAcquireSharedNanos(1, unit.toNanos(timeout));
     }
 
+
     /**
-     * Releases a permit, returning it to the semaphore.
-     *
-     * <p>Releases a permit, increasing the number of available permits by
-     * one.  If any threads are trying to acquire a permit, then one is
-     * selected and given the permit that was just released.  That thread
-     * is (re)enabled for thread scheduling purposes.
-     *
-     * <p>There is no requirement that a thread that releases a permit must
-     * have acquired that permit by calling {@link #acquire}.
-     * Correct usage of a semaphore is established by programming convention
-     * in the application.
+     * 归还凭证
      */
     public void release() {
         sync.releaseShared(1);
     }
 
-    /**
-     * Acquires the given number of permits from this semaphore,
-     * blocking until all are available,
-     * or the thread is {@linkplain Thread#interrupt interrupted}.
-     *
-     * <p>Acquires the given number of permits, if they are available,
-     * and returns immediately, reducing the number of available permits
-     * by the given amount.
-     *
-     * <p>If insufficient permits are available then the current thread becomes
-     * disabled for thread scheduling purposes and lies dormant until
-     * one of two things happens:
-     * <ul>
-     * <li>Some other thread invokes one of the {@link #release() release}
-     * methods for this semaphore, the current thread is next to be assigned
-     * permits and the number of available permits satisfies this request; or
-     * <li>Some other thread {@linkplain Thread#interrupt interrupts}
-     * the current thread.
-     * </ul>
-     *
-     * <p>If the current thread:
-     * <ul>
-     * <li>has its interrupted status set on entry to this method; or
-     * <li>is {@linkplain Thread#interrupt interrupted} while waiting
-     * for a permit,
-     * </ul>
-     * then {@link InterruptedException} is thrown and the current thread's
-     * interrupted status is cleared.
-     * Any permits that were to be assigned to this thread are instead
-     * assigned to other threads trying to acquire permits, as if
-     * permits had been made available by a call to {@link #release()}.
-     *
-     * @param permits the number of permits to acquire
-     * @throws InterruptedException if the current thread is interrupted
-     * @throws IllegalArgumentException if {@code permits} is negative
-     */
+    //获取permits次凭证
     public void acquire(int permits) throws InterruptedException {
         if (permits < 0) throw new IllegalArgumentException();
         sync.acquireSharedInterruptibly(permits);
     }
 
-    /**
-     * Acquires the given number of permits from this semaphore,
-     * blocking until all are available.
-     *
-     * <p>Acquires the given number of permits, if they are available,
-     * and returns immediately, reducing the number of available permits
-     * by the given amount.
-     *
-     * <p>If insufficient permits are available then the current thread becomes
-     * disabled for thread scheduling purposes and lies dormant until
-     * some other thread invokes one of the {@link #release() release}
-     * methods for this semaphore, the current thread is next to be assigned
-     * permits and the number of available permits satisfies this request.
-     *
-     * <p>If the current thread is {@linkplain Thread#interrupt interrupted}
-     * while waiting for permits then it will continue to wait and its
-     * position in the queue is not affected.  When the thread does return
-     * from this method its interrupt status will be set.
-     *
-     * @param permits the number of permits to acquire
-     * @throws IllegalArgumentException if {@code permits} is negative
-     */
+    //不响应中断的获取permits次凭证
     public void acquireUninterruptibly(int permits) {
         if (permits < 0) throw new IllegalArgumentException();
         sync.acquireShared(permits);
     }
 
-    /**
-     * Acquires the given number of permits from this semaphore, only
-     * if all are available at the time of invocation.
-     *
-     * <p>Acquires the given number of permits, if they are available, and
-     * returns immediately, with the value {@code true},
-     * reducing the number of available permits by the given amount.
-     *
-     * <p>If insufficient permits are available then this method will return
-     * immediately with the value {@code false} and the number of available
-     * permits is unchanged.
-     *
-     * <p>Even when this semaphore has been set to use a fair ordering
-     * policy, a call to {@code tryAcquire} <em>will</em>
-     * immediately acquire a permit if one is available, whether or
-     * not other threads are currently waiting.  This
-     * &quot;barging&quot; behavior can be useful in certain
-     * circumstances, even though it breaks fairness. If you want to
-     * honor the fairness setting, then use {@link #tryAcquire(int,
-     * long, TimeUnit) tryAcquire(permits, 0, TimeUnit.SECONDS) }
-     * which is almost equivalent (it also detects interruption).
-     *
-     * @param permits the number of permits to acquire
-     * @return {@code true} if the permits were acquired and
-     *         {@code false} otherwise
-     * @throws IllegalArgumentException if {@code permits} is negative
-     */
+    //尝试获取permits次凭证
     public boolean tryAcquire(int permits) {
         if (permits < 0) throw new IllegalArgumentException();
         return sync.nonfairTryAcquireShared(permits) >= 0;
     }
 
-    /**
-     * Acquires the given number of permits from this semaphore, if all
-     * become available within the given waiting time and the current
-     * thread has not been {@linkplain Thread#interrupt interrupted}.
-     *
-     * <p>Acquires the given number of permits, if they are available and
-     * returns immediately, with the value {@code true},
-     * reducing the number of available permits by the given amount.
-     *
-     * <p>If insufficient permits are available then
-     * the current thread becomes disabled for thread scheduling
-     * purposes and lies dormant until one of three things happens:
-     * <ul>
-     * <li>Some other thread invokes one of the {@link #release() release}
-     * methods for this semaphore, the current thread is next to be assigned
-     * permits and the number of available permits satisfies this request; or
-     * <li>Some other thread {@linkplain Thread#interrupt interrupts}
-     * the current thread; or
-     * <li>The specified waiting time elapses.
-     * </ul>
-     *
-     * <p>If the permits are acquired then the value {@code true} is returned.
-     *
-     * <p>If the current thread:
-     * <ul>
-     * <li>has its interrupted status set on entry to this method; or
-     * <li>is {@linkplain Thread#interrupt interrupted} while waiting
-     * to acquire the permits,
-     * </ul>
-     * then {@link InterruptedException} is thrown and the current thread's
-     * interrupted status is cleared.
-     * Any permits that were to be assigned to this thread, are instead
-     * assigned to other threads trying to acquire permits, as if
-     * the permits had been made available by a call to {@link #release()}.
-     *
-     * <p>If the specified waiting time elapses then the value {@code false}
-     * is returned.  If the time is less than or equal to zero, the method
-     * will not wait at all.  Any permits that were to be assigned to this
-     * thread, are instead assigned to other threads trying to acquire
-     * permits, as if the permits had been made available by a call to
-     * {@link #release()}.
-     *
-     * @param permits the number of permits to acquire
-     * @param timeout the maximum time to wait for the permits
-     * @param unit the time unit of the {@code timeout} argument
-     * @return {@code true} if all permits were acquired and {@code false}
-     *         if the waiting time elapsed before all permits were acquired
-     * @throws InterruptedException if the current thread is interrupted
-     * @throws IllegalArgumentException if {@code permits} is negative
-     */
+    //尝试在指定时间内以共享方式获取permits次凭证
     public boolean tryAcquire(int permits, long timeout, TimeUnit unit)
         throws InterruptedException {
         if (permits < 0) throw new IllegalArgumentException();
         return sync.tryAcquireSharedNanos(permits, unit.toNanos(timeout));
     }
 
-    /**
-     * Releases the given number of permits, returning them to the semaphore.
-     *
-     * <p>Releases the given number of permits, increasing the number of
-     * available permits by that amount.
-     * If any threads are trying to acquire permits, then one
-     * is selected and given the permits that were just released.
-     * If the number of available permits satisfies that thread's request
-     * then that thread is (re)enabled for thread scheduling purposes;
-     * otherwise the thread will wait until sufficient permits are available.
-     * If there are still permits available
-     * after this thread's request has been satisfied, then those permits
-     * are assigned in turn to other threads trying to acquire permits.
-     *
-     * <p>There is no requirement that a thread that releases a permit must
-     * have acquired that permit by calling {@link Semaphore#acquire acquire}.
-     * Correct usage of a semaphore is established by programming convention
-     * in the application.
-     *
-     * @param permits the number of permits to release
-     * @throws IllegalArgumentException if {@code permits} is negative
-     */
+    //释放permits次凭证
     public void release(int permits) {
         if (permits < 0) throw new IllegalArgumentException();
         sync.releaseShared(permits);
     }
 
-    /**
-     * Returns the current number of permits available in this semaphore.
-     *
-     * <p>This method is typically used for debugging and testing purposes.
-     *
-     * @return the number of permits available in this semaphore
-     */
+    //剩余的凭证数 内部其实是返回state值
     public int availablePermits() {
         return sync.getPermits();
     }
@@ -625,19 +385,16 @@ public class Semaphore implements java.io.Serializable {
      *
      * @return the number of permits acquired
      */
+    /**
+     * 一次消耗完剩余可以用的全部凭证
+     * @return
+     */
     public int drainPermits() {
         return sync.drainPermits();
     }
 
     /**
-     * Shrinks the number of available permits by the indicated
-     * reduction. This method can be useful in subclasses that use
-     * semaphores to track resources that become unavailable. This
-     * method differs from {@code acquire} in that it does not block
-     * waiting for permits to become available.
-     *
-     * @param reduction the number of permits to remove
-     * @throws IllegalArgumentException if {@code reduction} is negative
+     * 减少一部分凭证
      */
     protected void reducePermits(int reduction) {
         if (reduction < 0) throw new IllegalArgumentException();
