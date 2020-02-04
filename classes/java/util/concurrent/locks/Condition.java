@@ -44,8 +44,6 @@ public interface Condition {
 
     /**
      * 让线程进入等待，如果其他线程调用同一Condition对象的notify/notifyAll，那么等待的线程可能被唤醒
-     * @throws InterruptedException if the current thread is interrupted
-     *         (and interruption of thread suspension is supported)
      */
     void await() throws InterruptedException;
 
