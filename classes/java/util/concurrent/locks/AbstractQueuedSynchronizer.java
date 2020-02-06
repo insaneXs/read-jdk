@@ -1174,6 +1174,11 @@ public abstract class AbstractQueuedSynchronizer
      *        can represent anything you like.
      * @throws InterruptedException if the current thread is interrupted
      */
+    /**
+     * 可响应中断的获取锁
+     * @param arg
+     * @throws InterruptedException 如果等待过程中线程被中断，则抛出异常
+     */
     public final void acquireInterruptibly(int arg)
             throws InterruptedException {
         if (Thread.interrupted())
@@ -1198,6 +1203,14 @@ public abstract class AbstractQueuedSynchronizer
      * @param nanosTimeout the maximum number of nanoseconds to wait
      * @return {@code true} if acquired; {@code false} if timed out
      * @throws InterruptedException if the current thread is interrupted
+     */
+
+    /**
+     * 在指定实现内尝试获取锁
+     * @param arg
+     * @param nanosTimeout
+     * @return 是否获取成功
+     * @throws InterruptedException
      */
     public final boolean tryAcquireNanos(int arg, long nanosTimeout)
             throws InterruptedException {
@@ -1413,6 +1426,10 @@ public abstract class AbstractQueuedSynchronizer
      * #tryAcquireShared}) then it is guaranteed that the current thread
      * is not the first queued thread.  Used only as a heuristic in
      * ReentrantReadWriteLock.
+     */
+    /**
+     * 队列中的第一个节点是否为独占模式的节点
+     * @return
      */
     final boolean apparentlyFirstQueuedIsExclusive() {
         Node h, s;
