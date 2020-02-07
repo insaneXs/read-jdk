@@ -591,8 +591,7 @@ public abstract class AbstractQueuedSynchronizer
      * to calling unparkSuccessor of head if it needs signal.)
      */
     //共享模式的释放锁
-    //和独占模式最大的区别就是共享模式下的释放同时会唤醒后继节点
-    //而独占模式的释放只唤醒一个Node，之后的节点需要当前节点手动调用release才会唤醒
+    //和独占模式最大的区别就是共享模式下的唤醒过程会开始传播，而独占模式下只会唤醒头节点的后继节点
     private void doReleaseShared() {
         /*
          * Ensure that a release propagates, even if there are other
