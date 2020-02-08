@@ -61,6 +61,11 @@ package java.util;
  * @author Doug Lea
  * @param <E> the type of elements held in this collection
  */
+
+/**
+ * AbstratQueue类主要是为其他队列类提供了框架，虽然队列取值和添加值对外提供了多种不通的接口，但是底层实现上有一部分是相同的
+ * @param <E>
+ */
 public abstract class AbstractQueue<E>
     extends AbstractCollection<E>
     implements Queue<E> {
@@ -91,6 +96,11 @@ public abstract class AbstractQueue<E>
      * @throws IllegalArgumentException if some property of this element
      *         prevents it from being added to this queue
      */
+    /**
+     * add方法会调用offer方法，并视offer方法的返回值决定是否抛出异常
+     * @param e
+     * @return
+     */
     public boolean add(E e) {
         if (offer(e))
             return true;
@@ -108,6 +118,10 @@ public abstract class AbstractQueue<E>
      *
      * @return the head of this queue
      * @throws NoSuchElementException if this queue is empty
+     */
+    /**
+     * remove()方法会调用poll()，并视返回值决定是否抛出异常
+     * @return
      */
     public E remove() {
         E x = poll();
@@ -128,6 +142,10 @@ public abstract class AbstractQueue<E>
      * @return the head of this queue
      * @throws NoSuchElementException if this queue is empty
      */
+    /**
+     * element()方法会调用peek()方法，返回队首元素
+     * @return
+     */
     public E element() {
         E x = peek();
         if (x != null)
@@ -142,6 +160,9 @@ public abstract class AbstractQueue<E>
      *
      * <p>This implementation repeatedly invokes {@link #poll poll} until it
      * returns <tt>null</tt>.
+     */
+    /**
+     * clear()方法循环调用poll()方法，逐个移除队列中的元素
      */
     public void clear() {
         while (poll() != null)
@@ -176,6 +197,11 @@ public abstract class AbstractQueue<E>
      * @throws IllegalStateException if not all the elements can be added at
      *         this time due to insertion restrictions
      * @see #add(Object)
+     */
+    /**
+     * 将某个集合中的元素添加进队列
+     * @param c
+     * @return
      */
     public boolean addAll(Collection<? extends E> c) {
         if (c == null)
