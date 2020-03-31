@@ -58,6 +58,8 @@ package java.util.concurrent;
  * actions taken by that task, which in turn <i>happen-before</i>
  * actions following a successful return from the corresponding {@code take()}.
  */
+//提供任务执行完成的服务，主要用来将异步的执行过程进行同步
+//任务提交后会交给内部线程池执行，然后已经完成的任务会保存到同步队列中等待使用
 public interface CompletionService<V> {
     /**
      * Submits a value-returning task for execution and returns a Future
@@ -70,6 +72,7 @@ public interface CompletionService<V> {
      *         scheduled for execution
      * @throws NullPointerException if the task is null
      */
+    //提交任务（任务的执行依旧是委派给内部的线程池执行）
     Future<V> submit(Callable<V> task);
 
     /**
@@ -86,6 +89,7 @@ public interface CompletionService<V> {
      *         scheduled for execution
      * @throws NullPointerException if the task is null
      */
+    //提交任务
     Future<V> submit(Runnable task, V result);
 
     /**
@@ -95,6 +99,7 @@ public interface CompletionService<V> {
      * @return the Future representing the next completed task
      * @throws InterruptedException if interrupted while waiting
      */
+    //获取完成的任务，如果没有已完成的任务则会阻塞
     Future<V> take() throws InterruptedException;
 
     /**
@@ -104,6 +109,7 @@ public interface CompletionService<V> {
      * @return the Future representing the next completed task, or
      *         {@code null} if none are present
      */
+    //获取完成的任务，如果没有已完成的任务则返回null
     Future<V> poll();
 
     /**
@@ -120,5 +126,6 @@ public interface CompletionService<V> {
      *         before one is present
      * @throws InterruptedException if interrupted while waiting
      */
+    //在指定时间获取完成的任务，如果没有，则返回null
     Future<V> poll(long timeout, TimeUnit unit) throws InterruptedException;
 }

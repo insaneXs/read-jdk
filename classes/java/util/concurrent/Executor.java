@@ -125,6 +125,11 @@ package java.util.concurrent;
  * @since 1.5
  * @author Doug Lea
  */
+
+/**
+ * 线程池顶层接口
+ * 可以执行提交的命令
+ */
 public interface Executor {
 
     /**
@@ -136,6 +141,10 @@ public interface Executor {
      * @throws RejectedExecutionException if this task cannot be
      * accepted for execution
      * @throws NullPointerException if command is null
+     */
+    /**
+     * 执行提交的命令
+     * @param command
      */
     void execute(Runnable command);
 }
