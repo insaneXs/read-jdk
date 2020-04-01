@@ -28,6 +28,7 @@
             - [LinkedBlockingQueue](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/concurrent/LinkedBlockingQueue.java/)  
             - [RunnableFuture](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/concurrent/RunnableFuture.java/)
             - [ThreadPoolExecutor](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/concurrent/ThreadPoolExecutor.java/)
+            - [SynchronousQueue](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/concurrent/SynchronousQueue.java/)
             - [Semaphore ](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/concurrent/Semaphore.java/) 
         - [AbstractList](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/AbstractList.java/)  
         - [AbstractQueue](https://github.com/insaneXs/read-jdk/blob/master/classes/java/util/AbstractQueue.java/)  
