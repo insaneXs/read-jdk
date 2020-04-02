@@ -1547,7 +1547,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             //再次检查时如果发现线程池状态不在运行且移除任务成功，则对任务做拒绝处理
             if (! isRunning(recheck) && remove(command))
                 reject(command);
-            else if (workerCountOf(recheck) == 0) //如果此时workerCount为0，则添加Worker
+            else if (workerCountOf(recheck) == 0) //如果此时workerCount为0，则添加Worker（避免任务在队列里，但是没有worker去取的情况）
                 addWorker(null, false);
         }
         else if (!addWorker(command, false)) //说明线程池不在运行状态或是任务添加进队列失败 且再次尝试添加Worker后又失败
