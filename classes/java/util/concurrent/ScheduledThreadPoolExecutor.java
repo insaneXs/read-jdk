@@ -118,6 +118,17 @@ import java.util.*;
  * @since 1.5
  * @author Doug Lea
  */
+
+/**
+ * 计划执行任务的线程池
+ * 对于ScheduledThreadPoolExecutor主要关注的有亮点
+ * 1）线程池如何确定最近要到来的任务
+ * 2）如何在任务指定的时间点去执行任务
+ *
+ * 这两点都和其内部实现的阻塞队列DelayedWorkQueue有关。
+ * 首先DelayedWorkQueue维护了一个最小堆，对于查找最小delayed的值只用O(n)的时间
+ * 其次，当线程取到了最小堆的元素时，如果元素的delay > 0 ,那么让线程awaitNanos(delay) 让线程休息至时间点在醒来执行任务
+ */
 public class ScheduledThreadPoolExecutor
         extends ThreadPoolExecutor
         implements ScheduledExecutorService {
@@ -152,22 +163,26 @@ public class ScheduledThreadPoolExecutor
     /**
      * False if should cancel/suppress periodic tasks on shutdown.
      */
+    //SHUTDOWN后是否继续执行已存在的周期性任务
     private volatile boolean continueExistingPeriodicTasksAfterShutdown;
 
     /**
      * False if should cancel non-periodic tasks on shutdown.
      */
+    //SHUTDOWN后是否继续执行已存在的延期执行任务
     private volatile boolean executeExistingDelayedTasksAfterShutdown = true;
 
     /**
      * True if ScheduledFutureTask.cancel should remove from queue
      */
+    //设置是否取消后移除任务
     private volatile boolean removeOnCancel = false;
 
     /**
      * Sequence number to break scheduling ties, and in turn to
      * guarantee FIFO order among tied entries.
      */
+    //用于创建序列号
     private static final AtomicLong sequencer = new AtomicLong();
 
     /**
@@ -181,9 +196,11 @@ public class ScheduledThreadPoolExecutor
             extends FutureTask<V> implements RunnableScheduledFuture<V> {
 
         /** Sequence number to break ties FIFO */
+        //序列号
         private final long sequenceNumber;
 
         /** The time the task is enabled to execute in nanoTime units */
+        //执行时间点
         private long time;
 
         /**
@@ -192,6 +209,7 @@ public class ScheduledThreadPoolExecutor
          * indicates fixed-delay execution.  A value of 0 indicates a
          * non-repeating task.
          */
+        //间隔周期
         private final long period;
 
         /** The actual task to be re-enqueued by reExecutePeriodic */
@@ -200,11 +218,14 @@ public class ScheduledThreadPoolExecutor
         /**
          * Index into delay queue, to support faster cancellation.
          */
+        //在堆中的索引，方便快速访问
+        // ScheduledThreadPoolExecutor中的阻塞队列是用堆的特性实现的（方便最快找到最小值）
         int heapIndex;
 
         /**
          * Creates a one-shot action with given nanoTime-based trigger time.
          */
+        //将Runnable封装成执行一次的ScheduledFutureTask
         ScheduledFutureTask(Runnable r, V result, long ns) {
             super(r, result);
             this.time = ns;
@@ -215,6 +236,7 @@ public class ScheduledThreadPoolExecutor
         /**
          * Creates a periodic action with given nano time and period.
          */
+        //将Runnable封装成创建周期执行的ScheduleFutureTask
         ScheduledFutureTask(Runnable r, V result, long ns, long period) {
             super(r, result);
             this.time = ns;
@@ -225,6 +247,7 @@ public class ScheduledThreadPoolExecutor
         /**
          * Creates a one-shot action with given nanoTime-based trigger time.
          */
+        //将Callable封装成执行一次的ScheduledFutureTask
         ScheduledFutureTask(Callable<V> callable, long ns) {
             super(callable);
             this.time = ns;
@@ -232,10 +255,12 @@ public class ScheduledThreadPoolExecutor
             this.sequenceNumber = sequencer.getAndIncrement();
         }
 
+        //计算延时时间
         public long getDelay(TimeUnit unit) {
             return unit.convert(time - now(), NANOSECONDS);
         }
 
+        //比较任务执行的先后顺序
         public int compareTo(Delayed other) {
             if (other == this) // compare zero if same object
                 return 0;
@@ -246,7 +271,7 @@ public class ScheduledThreadPoolExecutor
                     return -1;
                 else if (diff > 0)
                     return 1;
-                else if (sequenceNumber < x.sequenceNumber)
+                else if (sequenceNumber < x.sequenceNumber) //相同时间比较序列号
                     return -1;
                 else
                     return 1;
@@ -260,6 +285,7 @@ public class ScheduledThreadPoolExecutor
          *
          * @return {@code true} if periodic
          */
+        //判断该任务是否是周期执行
         public boolean isPeriodic() {
             return period != 0;
         }
@@ -267,6 +293,7 @@ public class ScheduledThreadPoolExecutor
         /**
          * Sets the next time to run for a periodic task.
          */
+        //计算下次运行时间
         private void setNextRunTime() {
             long p = period;
             if (p > 0)
@@ -275,10 +302,14 @@ public class ScheduledThreadPoolExecutor
                 time = triggerTime(-p);
         }
 
+        //取消任务
         public boolean cancel(boolean mayInterruptIfRunning) {
+            //确认任务是否被取消
             boolean cancelled = super.cancel(mayInterruptIfRunning);
+            //取消成功 且 是否需要取消 且 索引大于0
             if (cancelled && removeOnCancel && heapIndex >= 0)
                 remove(this);
+            //返回是否取消成功（任务可以被取消或是已完成）
             return cancelled;
         }
 
@@ -289,10 +320,12 @@ public class ScheduledThreadPoolExecutor
             boolean periodic = isPeriodic();
             if (!canRunInCurrentRunState(periodic))
                 cancel(false);
-            else if (!periodic)
+            else if (!periodic) //非周期性任务，直接当做FutureTask运行
                 ScheduledFutureTask.super.run();
-            else if (ScheduledFutureTask.super.runAndReset()) {
+            else if (ScheduledFutureTask.super.runAndReset()) { //通过runAnReset执行任务，并重置任务状态
+                //更新运行时间
                 setNextRunTime();
+                //重新加入执行
                 reExecutePeriodic(outerTask);
             }
         }
@@ -303,6 +336,11 @@ public class ScheduledThreadPoolExecutor
      * and run-after-shutdown parameters.
      *
      * @param periodic true if this task periodic, false if delayed
+     */
+    /**
+     * 确定关闭后是否能继续执行任务
+     * @param periodic
+     * @return
      */
     boolean canRunInCurrentRunState(boolean periodic) {
         return isRunningOrShutdown(periodic ?
@@ -321,16 +359,23 @@ public class ScheduledThreadPoolExecutor
      *
      * @param task the task
      */
+    /**
+     * 执行延时和周期性任务的主方法。如果池已经被关闭，则拒绝任务，否则将任务添加进队列
+     * @param task
+     */
     private void delayedExecute(RunnableScheduledFuture<?> task) {
-        if (isShutdown())
+        if (isShutdown())//如果线程被关闭，则拒绝任务
             reject(task);
-        else {
+        else { //将任务添加进队列
             super.getQueue().add(task);
+            //再次检查是否任务添加后，线程池被关闭 是的话则移除任务并取消
             if (isShutdown() &&
                 !canRunInCurrentRunState(task.isPeriodic()) &&
                 remove(task))
                 task.cancel(false);
             else
+                //确认是否需要预开启线程准备,这个方法不会给worker分配初始任务，
+                //因为ScheduledThreadPoolExecutor所有的任务都需要先进队列
                 ensurePrestart();
         }
     }
@@ -340,6 +385,10 @@ public class ScheduledThreadPoolExecutor
      * Same idea as delayedExecute except drops task rather than rejecting.
      *
      * @param task the task
+     */
+    /**
+     * 判断任务是否可以重新加入队列
+     * @param task
      */
     void reExecutePeriodic(RunnableScheduledFuture<?> task) {
         if (canRunInCurrentRunState(true)) {
@@ -355,19 +404,25 @@ public class ScheduledThreadPoolExecutor
      * Cancels and clears the queue of all tasks that should not be run
      * due to shutdown policy.  Invoked within super.shutdown.
      */
-    @Override void onShutdown() {
+    //关闭线程池
+    @Override
+    void onShutdown() {
         BlockingQueue<Runnable> q = super.getQueue();
+        //获取线程池关闭后的运行策略
         boolean keepDelayed =
             getExecuteExistingDelayedTasksAfterShutdownPolicy();
         boolean keepPeriodic =
             getContinueExistingPeriodicTasksAfterShutdownPolicy();
+        //如果关闭后 已存在的延时任务和周期性执行任务都不需要继续执行
         if (!keepDelayed && !keepPeriodic) {
+            //取消队列中任务
             for (Object e : q.toArray())
                 if (e instanceof RunnableScheduledFuture<?>)
                     ((RunnableScheduledFuture<?>) e).cancel(false);
-            q.clear();
+
+            q.clear();//清理队列
         }
-        else {
+        else { //根据策略一级任务是否为周期性的 分开处理
             // Traverse snapshot to avoid iterator exceptions
             for (Object e : q.toArray()) {
                 if (e instanceof RunnableScheduledFuture) {
@@ -381,6 +436,7 @@ public class ScheduledThreadPoolExecutor
                 }
             }
         }
+        //尝试将线程池从SHUTDOWN 逐步转变为 TERMINATED
         tryTerminate();
     }
 
@@ -396,6 +452,8 @@ public class ScheduledThreadPoolExecutor
      * @return a task that can execute the runnable
      * @since 1.6
      */
+
+    //此方法主要是留给子类拓展，实现定制任务的目的
     protected <V> RunnableScheduledFuture<V> decorateTask(
         Runnable runnable, RunnableScheduledFuture<V> task) {
         return task;
@@ -413,11 +471,15 @@ public class ScheduledThreadPoolExecutor
      * @return a task that can execute the callable
      * @since 1.6
      */
+    ////此方法主要是留给子类拓展，实现定制任务的目的
     protected <V> RunnableScheduledFuture<V> decorateTask(
         Callable<V> callable, RunnableScheduledFuture<V> task) {
         return task;
     }
 
+    /************ScheduledThreadPoolExecutor的构造函数*********************/
+    //TODO 注意并没有提供maximumPoolSize的参数，因为DelayedWorkQueue是无边界的
+    //TODO 因此也没有提供空闲超时时间的设置，因为池不会创建多于corePoolSize的线程
     /**
      * Creates a new {@code ScheduledThreadPoolExecutor} with the
      * given core pool size.
@@ -522,6 +584,13 @@ public class ScheduledThreadPoolExecutor
      * @throws RejectedExecutionException {@inheritDoc}
      * @throws NullPointerException       {@inheritDoc}
      */
+    /**
+     * 任务提交的主方法
+     * @param command
+     * @param delay
+     * @param unit
+     * @return
+     */
     public ScheduledFuture<?> schedule(Runnable command,
                                        long delay,
                                        TimeUnit unit) {
@@ -537,6 +606,14 @@ public class ScheduledThreadPoolExecutor
     /**
      * @throws RejectedExecutionException {@inheritDoc}
      * @throws NullPointerException       {@inheritDoc}
+     */
+    /**
+     * 任务提交的主方法
+     * @param callable
+     * @param delay
+     * @param unit
+     * @param <V>
+     * @return
      */
     public <V> ScheduledFuture<V> schedule(Callable<V> callable,
                                            long delay,
@@ -833,9 +910,12 @@ public class ScheduledThreadPoolExecutor
          */
 
         private static final int INITIAL_CAPACITY = 16;
+
         private RunnableScheduledFuture<?>[] queue =
             new RunnableScheduledFuture<?>[INITIAL_CAPACITY];
+
         private final ReentrantLock lock = new ReentrantLock();
+
         private int size = 0;
 
         /**
@@ -854,12 +934,16 @@ public class ScheduledThreadPoolExecutor
          * signalled.  So waiting threads must be prepared to acquire
          * and lose leadership while waiting.
          */
+        //leader 表示正在等待队列中第一个任务执行的线程
+        //当一个线程成为leader后，它会等待至下一个任务的时间
+        //而其他线程则会成为follower,等待至无穷的时间，由leader唤醒
         private Thread leader = null;
 
         /**
          * Condition signalled when a newer task becomes available at the
          * head of the queue or a new thread may need to become leader.
          */
+        //当有队列里有新的任务可用时 会触发该信号
         private final Condition available = lock.newCondition();
 
         /**
@@ -874,16 +958,25 @@ public class ScheduledThreadPoolExecutor
          * Sifts element added at bottom up to its heap-ordered spot.
          * Call only when holding lock.
          */
+        /**
+         * 堆的上移
+         * @param k
+         * @param key
+         */
         private void siftUp(int k, RunnableScheduledFuture<?> key) {
             while (k > 0) {
+                //查找父节点
                 int parent = (k - 1) >>> 1;
                 RunnableScheduledFuture<?> e = queue[parent];
+                //与父节点比较 如果已经比父节点大 则退出上移
                 if (key.compareTo(e) >= 0)
                     break;
+                //否则和父节点交换
                 queue[k] = e;
                 setIndex(e, k);
                 k = parent;
             }
+            //上移结束，确定出key的正确位置
             queue[k] = key;
             setIndex(key, k);
         }
@@ -893,25 +986,35 @@ public class ScheduledThreadPoolExecutor
          * Call only when holding lock.
          */
         private void siftDown(int k, RunnableScheduledFuture<?> key) {
+            //下移只用考虑前半部分
             int half = size >>> 1;
             while (k < half) {
+                //找左子节点
                 int child = (k << 1) + 1;
                 RunnableScheduledFuture<?> c = queue[child];
+                //找右子节点
                 int right = child + 1;
+                //现比较左右子节点中较小的值
                 if (right < size && c.compareTo(queue[right]) > 0)
                     c = queue[child = right];
+                //将key与较小的子节点比较，如果已经比其小，说明下移过程结束
                 if (key.compareTo(c) <= 0)
                     break;
+                //否则交换位置
                 queue[k] = c;
                 setIndex(c, k);
                 k = child;
             }
+            //将key放在目标位置上，更新坐标
             queue[k] = key;
             setIndex(key, k);
         }
 
         /**
          * Resizes the heap array.  Call only when holding lock.
+         */
+        /**
+         * 对数组进行1.5倍扩容
          */
         private void grow() {
             int oldCapacity = queue.length;
@@ -924,6 +1027,7 @@ public class ScheduledThreadPoolExecutor
         /**
          * Finds index of given object, or -1 if absent.
          */
+        //查找任务在阻塞队列中的位置
         private int indexOf(Object x) {
             if (x != null) {
                 if (x instanceof ScheduledFutureTask) {
@@ -951,20 +1055,31 @@ public class ScheduledThreadPoolExecutor
             }
         }
 
+        //移除对象
         public boolean remove(Object x) {
             final ReentrantLock lock = this.lock;
+            //上锁
             lock.lock();
+
             try {
+                //确认对象在队列中的索引
                 int i = indexOf(x);
                 if (i < 0)
                     return false;
-
+                //更新索引为-1
                 setIndex(queue[i], -1);
                 int s = --size;
+
+                //堆移除元素时需要从数组的最后元素先填补移除的空缺
+                //然后再对得到的数组进行调整，使其满足堆的特性
                 RunnableScheduledFuture<?> replacement = queue[s];
                 queue[s] = null;
+
+                //如果移除的不是最后一个元素，则需要通过上移和下移调整
                 if (s != i) {
+                    //下移调整
                     siftDown(i, replacement);
+                    //下移调整后如果坐标没变，说明可能是需要上移调整
                     if (queue[i] == replacement)
                         siftUp(i, replacement);
                 }
@@ -992,6 +1107,7 @@ public class ScheduledThreadPoolExecutor
             return Integer.MAX_VALUE;
         }
 
+        //返回堆的父节点但不移除（对于最小堆而言就是最小值）
         public RunnableScheduledFuture<?> peek() {
             final ReentrantLock lock = this.lock;
             lock.lock();
@@ -1002,23 +1118,27 @@ public class ScheduledThreadPoolExecutor
             }
         }
 
+        //往队列中存
         public boolean offer(Runnable x) {
             if (x == null)
                 throw new NullPointerException();
             RunnableScheduledFuture<?> e = (RunnableScheduledFuture<?>)x;
             final ReentrantLock lock = this.lock;
             lock.lock();
+
             try {
                 int i = size;
+                //如果队列满了，则进行扩容
                 if (i >= queue.length)
                     grow();
                 size = i + 1;
-                if (i == 0) {
+                if (i == 0) {//刚构建的堆，只有一个元素，不需要调整堆
                     queue[0] = e;
                     setIndex(e, 0);
-                } else {
+                } else {//否则将元素添加到数组末尾，并上移调整堆
                     siftUp(i, e);
                 }
+                //说明队列由空变成非空，唤醒等待取任务的线程
                 if (queue[0] == e) {
                     leader = null;
                     available.signal();
@@ -1057,54 +1177,66 @@ public class ScheduledThreadPoolExecutor
             return f;
         }
 
+        //取第一个元素（不阻塞，不管结果直接返回）
         public RunnableScheduledFuture<?> poll() {
             final ReentrantLock lock = this.lock;
             lock.lock();
             try {
+                //取出队列中第一个元素
                 RunnableScheduledFuture<?> first = queue[0];
                 if (first == null || first.getDelay(NANOSECONDS) > 0)
                     return null;
-                else
+                else //如果时间到了 才会从队列中移除
                     return finishPoll(first);
             } finally {
                 lock.unlock();
             }
         }
 
+        //从队列中取出元素(阻塞直到取出元素)
         public RunnableScheduledFuture<?> take() throws InterruptedException {
             final ReentrantLock lock = this.lock;
             lock.lockInterruptibly();
             try {
+                //自循环等待 直到成功取出第一个delay已经到达的任务
                 for (;;) {
                     RunnableScheduledFuture<?> first = queue[0];
+                    //如果队列为空，则进入等待
                     if (first == null)
                         available.await();
                     else {
+                        //如果队列中的第一个元素执行时间已经到达，则移除并返回该元素
                         long delay = first.getDelay(NANOSECONDS);
                         if (delay <= 0)
                             return finishPoll(first);
                         first = null; // don't retain ref while waiting
+
+                        //说明已经有其他线程先进入等待，那么当前线程需要leader醒来由leader发出通知
                         if (leader != null)
                             available.await();
-                        else {
+                        else {//未设置leader线程
+                            //将此线程设置为leader，并等待至下个任务执行的时间点
                             Thread thisThread = Thread.currentThread();
                             leader = thisThread;
                             try {
                                 available.awaitNanos(delay);
                             } finally {
-                                if (leader == thisThread)
+                                if (leader == thisThread) //因为此时leader线程已经醒来，因此清空leader
                                     leader = null;
                             }
                         }
                     }
                 }
             } finally {
+                //leader  == null 说明目前没有领导线程在等待唤醒（因为有leader存在时，唤醒的工作只能由leader进行）
+                //queue[0] != null 说明此时队列中仍有任务
                 if (leader == null && queue[0] != null)
                     available.signal();
                 lock.unlock();
             }
         }
 
+        //取（在规定时间内等待，如果没有，则返回null）
         public RunnableScheduledFuture<?> poll(long timeout, TimeUnit unit)
             throws InterruptedException {
             long nanos = unit.toNanos(timeout);
@@ -1113,27 +1245,32 @@ public class ScheduledThreadPoolExecutor
             try {
                 for (;;) {
                     RunnableScheduledFuture<?> first = queue[0];
-                    if (first == null) {
-                        if (nanos <= 0)
+                    if (first == null) {//队列为空，则进入等待
+                        if (nanos <= 0) //超时仍未取道值，返回null
                             return null;
                         else
                             nanos = available.awaitNanos(nanos);
-                    } else {
+                    } else { //队列不为空
                         long delay = first.getDelay(NANOSECONDS);
-                        if (delay <= 0)
+                        if (delay <= 0) //第一个任务的执行时间点已经到达，则移除元素并返回
                             return finishPoll(first);
-                        if (nanos <= 0)
+                        if (nanos <= 0)//如果在取到第一个元素时，已经超时，则返回null
                             return null;
+                        //第一个任务执行时间点还没到
                         first = null; // don't retain ref while waiting
+                        //如果任务的执行时间点大于poll的等待超时时间点 或是 leader线程不为null，先让该线程最长等待至超时时间点后再做决定
                         if (nanos < delay || leader != null)
                             nanos = available.awaitNanos(nanos);
-                        else {
+                        else {//任务执行时间点在等待超时时间点之前，且此时没有其他等待的线程
                             Thread thisThread = Thread.currentThread();
                             leader = thisThread;
                             try {
+                                //让线程等待至任务执行时间点再做决定
                                 long timeLeft = available.awaitNanos(delay);
+                                //计算剩余的超时时间
                                 nanos -= delay - timeLeft;
                             } finally {
+                                //如果醒来的线程是leader，则清空leader
                                 if (leader == thisThread)
                                     leader = null;
                             }
@@ -1141,12 +1278,14 @@ public class ScheduledThreadPoolExecutor
                     }
                 }
             } finally {
+                //判断是否唤醒资格 并唤醒其他等待线程
                 if (leader == null && queue[0] != null)
                     available.signal();
                 lock.unlock();
             }
         }
 
+        //清空队列中的任务
         public void clear() {
             final ReentrantLock lock = this.lock;
             lock.lock();
@@ -1168,6 +1307,7 @@ public class ScheduledThreadPoolExecutor
          * Returns first element only if it is expired.
          * Used only by drainTo.  Call only when holding lock.
          */
+        //判断第一个任务时候已经到达执行时间
         private RunnableScheduledFuture<?> peekExpired() {
             // assert lock.isHeldByCurrentThread();
             RunnableScheduledFuture<?> first = queue[0];

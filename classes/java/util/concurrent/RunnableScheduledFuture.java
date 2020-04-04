@@ -45,6 +45,11 @@ package java.util.concurrent;
  * @author Doug Lea
  * @param <V> The result type returned by this Future's {@code get} method
  */
+
+/**
+ * 可在未来执行异步计算任务
+ * @param <V>
+ */
 public interface RunnableScheduledFuture<V> extends RunnableFuture<V>, ScheduledFuture<V> {
 
     /**
@@ -53,6 +58,10 @@ public interface RunnableScheduledFuture<V> extends RunnableFuture<V>, Scheduled
      * run only once.
      *
      * @return {@code true} if this task is periodic
+     */
+    /**
+     * 是否可以周期执行
+     * @return
      */
     boolean isPeriodic();
 }

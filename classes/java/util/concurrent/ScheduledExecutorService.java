@@ -91,6 +91,10 @@ package java.util.concurrent;
  * @since 1.5
  * @author Doug Lea
  */
+
+/**
+ * 提供定时执行任务能力的线程池
+ */
 public interface ScheduledExecutorService extends ExecutorService {
 
     /**
@@ -107,6 +111,13 @@ public interface ScheduledExecutorService extends ExecutorService {
      *         scheduled for execution
      * @throws NullPointerException if command is null
      */
+    /**
+     * 在执行延时时间后开始执行任务
+     * @param command 任务
+     * @param delay 延时时间
+     * @param unit
+     * @return
+     */
     public ScheduledFuture<?> schedule(Runnable command,
                                        long delay, TimeUnit unit);
 
@@ -122,6 +133,13 @@ public interface ScheduledExecutorService extends ExecutorService {
      * @throws RejectedExecutionException if the task cannot be
      *         scheduled for execution
      * @throws NullPointerException if callable is null
+     */
+    /**
+     * 在执行延时时间后开始执行任务
+     * @param callable 任务
+     * @param delay 延时时间
+     * @param unit
+     * @return
      */
     public <V> ScheduledFuture<V> schedule(Callable<V> callable,
                                            long delay, TimeUnit unit);
@@ -151,6 +169,14 @@ public interface ScheduledExecutorService extends ExecutorService {
      * @throws NullPointerException if command is null
      * @throws IllegalArgumentException if period less than or equal to zero
      */
+    /**
+     * 已固定频率执行任务
+     * @param command
+     * @param initialDelay
+     * @param period
+     * @param unit
+     * @return
+     */
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command,
                                                   long initialDelay,
                                                   long period,
@@ -177,6 +203,14 @@ public interface ScheduledExecutorService extends ExecutorService {
      *         scheduled for execution
      * @throws NullPointerException if command is null
      * @throws IllegalArgumentException if delay less than or equal to zero
+     */
+    /**
+     * 以固定延时执行任务
+     * @param command
+     * @param initialDelay
+     * @param delay
+     * @param unit
+     * @return
      */
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command,
                                                      long initialDelay,

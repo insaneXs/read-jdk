@@ -46,6 +46,11 @@ package java.util.concurrent;
  * @since 1.5
  * @author Doug Lea
  */
+
+/**
+ * 延迟接口
+ * 继承了Comparable接口，可以在多个Delayed对象中比较逾期时间
+ */
 public interface Delayed extends Comparable<Delayed> {
 
     /**
@@ -55,6 +60,11 @@ public interface Delayed extends Comparable<Delayed> {
      * @param unit the time unit
      * @return the remaining delay; zero or negative values indicate
      * that the delay has already elapsed
+     */
+    /**
+     * 获取指定单位的延期时间
+     * @param unit
+     * @return
      */
     long getDelay(TimeUnit unit);
 }
