@@ -52,6 +52,10 @@ import java.security.ProtectionDomain;
  * @since 1.7
  * @author Doug Lea
  */
+
+/**
+ * 在Fork/Join框架中使用的特定的线程
+ */
 public class ForkJoinWorkerThread extends Thread {
     /*
      * ForkJoinWorkerThreads are managed by ForkJoinPools and perform
@@ -70,7 +74,9 @@ public class ForkJoinWorkerThread extends Thread {
      * both here and in the subclass to access and set Thread fields.
      */
 
+    //Fork/Join框架线程池(这个线程工作的池)
     final ForkJoinPool pool;                // the pool this thread works in
+    //线程内部的工作队列
     final ForkJoinPool.WorkQueue workQueue; // work-stealing mechanics
 
     /**
@@ -79,6 +85,7 @@ public class ForkJoinWorkerThread extends Thread {
      * @param pool the pool this thread works in
      * @throws NullPointerException if pool is null
      */
+    //创建特殊线程
     protected ForkJoinWorkerThread(ForkJoinPool pool) {
         // Use a placeholder until a useful name can be set in registerWorker
         super("aForkJoinWorkerThread");
@@ -89,12 +96,14 @@ public class ForkJoinWorkerThread extends Thread {
     /**
      * Version for InnocuousForkJoinWorkerThread
      */
+    //创建特殊线程
     ForkJoinWorkerThread(ForkJoinPool pool, ThreadGroup threadGroup,
                          AccessControlContext acc) {
         super(threadGroup, null, "aForkJoinWorkerThread");
         U.putOrderedObject(this, INHERITEDACCESSCONTROLCONTEXT, acc);
         eraseThreadLocals(); // clear before registering
         this.pool = pool;
+        //创建时，向池中注册
         this.workQueue = pool.registerWorker(this);
     }
 
@@ -130,6 +139,7 @@ public class ForkJoinWorkerThread extends Thread {
      * threads work correctly even before this thread starts
      * processing tasks.
      */
+    //启动时的钩子函数
     protected void onStart() {
     }
 
@@ -141,6 +151,7 @@ public class ForkJoinWorkerThread extends Thread {
      * @param exception the exception causing this thread to abort due
      * to an unrecoverable error, or {@code null} if completed normally
      */
+    //停止时的钩子函数
     protected void onTermination(Throwable exception) {
     }
 
@@ -150,10 +161,12 @@ public class ForkJoinWorkerThread extends Thread {
      * {@link ForkJoinTask}s.
      */
     public void run() {
+
         if (workQueue.array == null) { // only run once
             Throwable exception = null;
             try {
                 onStart();
+                //runWorker是线程池执行任务的主方法
                 pool.runWorker(workQueue);
             } catch (Throwable ex) {
                 exception = ex;
@@ -164,6 +177,7 @@ public class ForkJoinWorkerThread extends Thread {
                     if (exception == null)
                         exception = ex;
                 } finally {
+                    //运行接受后，从池中去除
                     pool.deregisterWorker(this, exception);
                 }
             }

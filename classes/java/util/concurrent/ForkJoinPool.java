@@ -710,6 +710,7 @@ public class ForkJoinPool extends AbstractExecutorService {
      * for {@code ForkJoinWorkerThread} subclasses that extend base
      * functionality or initialize threads with different contexts.
      */
+    //用来创建ForkJoinWorkerThread的工厂类
     public static interface ForkJoinWorkerThreadFactory {
         /**
          * Returns a new worker thread operating in the given pool.
@@ -806,6 +807,7 @@ public class ForkJoinPool extends AbstractExecutorService {
         volatile int qlock;        // 1: locked, < 0: terminate; else 0
         volatile int base;         // index of next slot for poll
         int top;                   // index of next slot for push
+        //队列的内部实现是数组
         ForkJoinTask<?>[] array;   // the elements (initially unallocated)
         final ForkJoinPool pool;   // the containing pool (may be null)
         final ForkJoinWorkerThread owner; // owning thread or null if shared
@@ -1391,6 +1393,7 @@ public class ForkJoinPool extends AbstractExecutorService {
     volatile int runState;               // lockable status
     final int config;                    // parallelism, mode
     int indexSeed;                       // to generate worker index
+    //工作队列数组（每个线程内部的workQueue的一个集合）
     volatile WorkQueue[] workQueues;     // main registry
     final ForkJoinWorkerThreadFactory factory;
     final UncaughtExceptionHandler ueh;  // per-worker UEH
