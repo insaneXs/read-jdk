@@ -114,6 +114,7 @@ class Socket implements java.io.Closeable {
      *
      * @since   1.5
      */
+    //不真正建立连接，而是通过代理进行通信
     public Socket(Proxy proxy) {
         // Create a copy of Proxy as a security measure
         if (proxy == null) {
@@ -437,6 +438,13 @@ class Socket implements java.io.Closeable {
              new InetSocketAddress(0), stream);
     }
 
+    /**
+     * 创建套接字
+     * @param address 远端地址
+     * @param localAddr 本地地址
+     * @param stream 套接字是否是基于流还是基于Datagram 基于Datagram的套接字已经在之后的版本中被拆到DatagramSocket中
+     * @throws IOException
+     */
     private Socket(SocketAddress address, SocketAddress localAddr,
                    boolean stream) throws IOException {
         setImpl();

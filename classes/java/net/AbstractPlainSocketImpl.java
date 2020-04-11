@@ -44,17 +44,21 @@ import sun.net.ResourceManager;
 abstract class AbstractPlainSocketImpl extends SocketImpl
 {
     /* instance variable for SO_TIMEOUT */
+    //超时时间
     int timeout;   // timeout in millisec
     // traffic class
     private int trafficClass;
 
+    //输入/输出流关闭的标志位
     private boolean shut_rd = false;
     private boolean shut_wr = false;
 
+    //内部关联的输入输出流
     private SocketInputStream socketInputStream = null;
     private SocketOutputStream socketOutputStream = null;
 
     /* number of threads using the FileDescriptor */
+    //使用该文件描述符的线程数
     protected int fdUseCount = 0;
 
     /* lock when increment/decrementing fdUseCount */
@@ -72,6 +76,7 @@ abstract class AbstractPlainSocketImpl extends SocketImpl
 
    /* whether this Socket is a stream (TCP) socket or not (UDP)
     */
+   //是否是流式（TCP连接还是UDP连接）
     protected boolean stream;
 
     /**
@@ -91,21 +96,25 @@ abstract class AbstractPlainSocketImpl extends SocketImpl
      * Creates a socket with a boolean that specifies whether this
      * is a stream socket (true) or an unconnected UDP socket (false).
      */
+    //创建套接字
     protected synchronized void create(boolean stream) throws IOException {
         this.stream = stream;
-        if (!stream) {
+
+        if (!stream) { //创建UDP
             ResourceManager.beforeUdpCreate();
             // only create the fd after we know we will be able to create the socket
             fd = new FileDescriptor();
             try {
+                //UDP 并没有Client 和 Server之分
                 socketCreate(false);
             } catch (IOException ioe) {
                 ResourceManager.afterUdpClose();
                 fd = null;
                 throw ioe;
             }
-        } else {
+        } else { //创建TCP
             fd = new FileDescriptor();
+            //调用create创建的TCP连接 一定是ServerSocket
             socketCreate(true);
         }
         if (socket != null)

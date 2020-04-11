@@ -241,14 +241,25 @@ class ServerSocket implements java.io.Closeable {
      * @see SecurityManager#checkListen
      * @since   JDK1.1
      */
+    /**
+     * 创建服务端套接字
+     * @param port 套接字监听的端口
+     * @param backlog TCP连接队列的最大长度
+     * @param bindAddr 套接字绑定的地址
+     * @throws IOException
+     */
     public ServerSocket(int port, int backlog, InetAddress bindAddr) throws IOException {
+        //设置套接字的内部实现
         setImpl();
+        //检查端口
         if (port < 0 || port > 0xFFFF)
             throw new IllegalArgumentException(
                        "Port value out of range: " + port);
+        //设置最大连接队列
         if (backlog < 1)
           backlog = 50;
         try {
+            //绑定套接字地址及开始监听
             bind(new InetSocketAddress(bindAddr, port), backlog);
         } catch(SecurityException e) {
             close();
@@ -374,7 +385,7 @@ class ServerSocket implements java.io.Closeable {
             throw new SocketException("Socket is closed");
         if (!oldImpl && isBound())
             throw new SocketException("Already bound");
-        if (endpoint == null)
+        if (endpoint == null) //默认绑定本机 且随机 分配端口
             endpoint = new InetSocketAddress(0);
         if (!(endpoint instanceof InetSocketAddress))
             throw new IllegalArgumentException("Unsupported address type");
@@ -387,6 +398,7 @@ class ServerSocket implements java.io.Closeable {
             SecurityManager security = System.getSecurityManager();
             if (security != null)
                 security.checkListen(epoint.getPort());
+            //通过SocketImpl绑定地址 监听端口
             getImpl().bind(epoint.getAddress(), epoint.getPort());
             getImpl().listen(backlog);
             bound = true;
@@ -519,6 +531,12 @@ class ServerSocket implements java.io.Closeable {
      * @revised 1.4
      * @spec JSR-51
      */
+
+    /**
+     * 等待连接建立，这个方法会阻塞直到连接建立
+     * @return
+     * @throws IOException
+     */
     public Socket accept() throws IOException {
         if (isClosed())
             throw new SocketException("Socket is closed");
@@ -548,15 +566,18 @@ class ServerSocket implements java.io.Closeable {
     protected final void implAccept(Socket s) throws IOException {
         SocketImpl si = null;
         try {
+            //创建或重置socketImpl
             if (s.impl == null)
               s.setImpl();
-            else {
+            else { // 可能是出于复用套接字
                 s.impl.reset();
             }
+
             si = s.impl;
             s.impl = null;
             si.address = new InetAddress();
             si.fd = new FileDescriptor();
+            //通过SocketServer内部的SocketImpl去等待连接建立
             getImpl().accept(si);
 
             SecurityManager security = System.getSecurityManager();

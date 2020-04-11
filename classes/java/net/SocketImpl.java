@@ -41,31 +41,41 @@ import java.io.FileDescriptor;
  * @author  unascribed
  * @since   JDK1.0
  */
+
+/**
+ * SocketImpl是所有Socket的抽象父类，无论是SocketServer还是Socket，内部都是通过SocketImpl实现的
+ * JDK中提供了几种SocketImpl的实现，其中PlainSocket是基本实现，提供了除穿越防火墙和代理之外的功能
+ */
 public abstract class SocketImpl implements SocketOptions {
     /**
      * The actual Socket object.
      */
+    //关联的 socket 或是 serverSocket
     Socket socket = null;
     ServerSocket serverSocket = null;
 
     /**
      * The file descriptor object for this socket.
      */
+    //文件描述符
     protected FileDescriptor fd;
 
     /**
      * The IP address of the remote end of this socket.
      */
+    //套接字关联的远端地址
     protected InetAddress address;
 
     /**
      * The port number on the remote host to which this socket is connected.
      */
+    //套接字关联的远端端口
     protected int port;
 
     /**
      * The local port number to which this socket is connected.
      */
+    //套接字本地端口
     protected int localport;
 
     /**
@@ -76,8 +86,17 @@ public abstract class SocketImpl implements SocketOptions {
      * @exception  IOException  if an I/O error occurs while creating the
      *               socket.
      */
+    /**
+     * 创建套接字
+     * @param stream true表示流式 TCP连接 false表示Datagram 为UDP连接
+     * @throws IOException
+     */
     protected abstract void create(boolean stream) throws IOException;
 
+
+
+
+    /*********************套接字向某个端口和地址发起连接***********************/
     /**
      * Connects this socket to the specified port on the named host.
      *
@@ -111,6 +130,7 @@ public abstract class SocketImpl implements SocketOptions {
      */
     protected abstract void connect(SocketAddress address, int timeout) throws IOException;
 
+    /*********************套接字绑定端口地址**********************/
     /**
      * Binds this socket to the specified local IP address and port number.
      *
@@ -128,6 +148,11 @@ public abstract class SocketImpl implements SocketOptions {
      *
      * @param      backlog   the maximum length of the queue.
      * @exception  IOException  if an I/O error occurs when creating the queue.
+     */
+    /**
+     * 套接字开始监听
+     * @param backlog 最大TCP连接长度数
+     * @throws IOException
      */
     protected abstract void listen(int backlog) throws IOException;
 
@@ -147,6 +172,11 @@ public abstract class SocketImpl implements SocketOptions {
      * @exception  IOException  if an I/O error occurs when creating the
      *               input stream.
     */
+    /**
+     * 获取套接字关联的输入流，用于读取
+     * @return
+     * @throws IOException
+     */
     protected abstract InputStream getInputStream() throws IOException;
 
     /**
@@ -155,6 +185,11 @@ public abstract class SocketImpl implements SocketOptions {
      * @return     an output stream for writing to this socket.
      * @exception  IOException  if an I/O error occurs when creating the
      *               output stream.
+     */
+    /**
+     * 获取套接字关联的输出流，用于写入
+     * @return
+     * @throws IOException
      */
     protected abstract OutputStream getOutputStream() throws IOException;
 
@@ -167,12 +202,21 @@ public abstract class SocketImpl implements SocketOptions {
      * @exception  IOException  if an I/O error occurs when determining the
      *               number of bytes available.
      */
+    /**
+     * 判断套接字是否已经准备好被读取的字节数
+     * @return
+     * @throws IOException
+     */
     protected abstract int available() throws IOException;
 
     /**
      * Closes this socket.
      *
      * @exception  IOException  if an I/O error occurs when closing this socket.
+     */
+    /**
+     * 关闭套接字
+     * @throws IOException
      */
     protected abstract void close() throws IOException;
 
@@ -212,6 +256,10 @@ public abstract class SocketImpl implements SocketOptions {
      * @see java.net.Socket#setSoLinger(boolean, int)
      * @since 1.3
      */
+    /**
+     * 关闭这个套接字的输出流 之前的数据将继续被发送
+     * @throws IOException
+     */
     protected void shutdownOutput() throws IOException {
       throw new IOException("Method not implemented!");
     }
@@ -222,6 +270,7 @@ public abstract class SocketImpl implements SocketOptions {
      * @return  the value of this socket's {@code fd} field.
      * @see     java.net.SocketImpl#fd
      */
+    //获取文件描述符
     protected FileDescriptor getFileDescriptor() {
         return fd;
     }
@@ -232,6 +281,7 @@ public abstract class SocketImpl implements SocketOptions {
      * @return  the value of this socket's {@code address} field.
      * @see     java.net.SocketImpl#address
      */
+    //获取远端以太网地址
     protected InetAddress getInetAddress() {
         return address;
     }
@@ -242,6 +292,7 @@ public abstract class SocketImpl implements SocketOptions {
      * @return  the value of this socket's {@code port} field.
      * @see     java.net.SocketImpl#port
      */
+    //获取端口
     protected int getPort() {
         return port;
     }
@@ -275,10 +326,12 @@ public abstract class SocketImpl implements SocketOptions {
      * @return  the value of this socket's {@code localport} field.
      * @see     java.net.SocketImpl#localport
      */
+    //获取本地的端口
     protected int getLocalPort() {
         return localport;
     }
 
+    /************获取Socket和ServerSocket**************/
     void setSocket(Socket soc) {
         this.socket = soc;
     }
@@ -356,6 +409,13 @@ public abstract class SocketImpl implements SocketOptions {
         /* Not implemented yet */
     }
 
+    /**
+     * 设置TCP连接选项
+     * @param name 选项名称
+     * @param value 选项值
+     * @param <T> 泛型参数
+     * @throws IOException
+     */
     <T> void setOption(SocketOption<T> name, T value) throws IOException {
         if (name == StandardSocketOptions.SO_KEEPALIVE) {
             setOption(SocketOptions.SO_KEEPALIVE, value);
@@ -376,6 +436,13 @@ public abstract class SocketImpl implements SocketOptions {
         }
     }
 
+    /**
+     * 获取TCP连接选项
+     * @param name
+     * @param <T>
+     * @return
+     * @throws IOException
+     */
     <T> T getOption(SocketOption<T> name) throws IOException {
         if (name == StandardSocketOptions.SO_KEEPALIVE) {
             return (T)getOption(SocketOptions.SO_KEEPALIVE);
