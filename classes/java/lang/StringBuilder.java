@@ -73,6 +73,7 @@ package java.lang;
  * @see         java.lang.String
  * @since       1.5
  */
+//非线程安全的字符串构造类 内部实现逻辑都和StringBuffer一致 但是没有用synchronized保证线程安全
 public final class StringBuilder
     extends AbstractStringBuilder
     implements java.io.Serializable, CharSequence

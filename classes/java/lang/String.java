@@ -108,12 +108,15 @@ import java.util.regex.PatternSyntaxException;
  * @since   JDK1.0
  */
 
+//String类的实现
 public final class String
     implements java.io.Serializable, Comparable<String>, CharSequence {
     /** The value is used for character storage. */
+    //底层char[]数组被声明为final 保证不可变性
     private final char value[];
 
     /** Cache the hash code for the string */
+    //保存该字符串的哈希值
     private int hash; // Default to 0
 
     /** use serialVersionUID from JDK 1.0.2 for interoperability */
@@ -1922,6 +1925,7 @@ public final class String
      *             {@code beginIndex} is negative or larger than the
      *             length of this {@code String} object.
      */
+    //子字符串 返回全新的字符串
     public String substring(int beginIndex) {
         if (beginIndex < 0) {
             throw new StringIndexOutOfBoundsException(beginIndex);
@@ -1955,6 +1959,7 @@ public final class String
      *             {@code beginIndex} is larger than
      *             {@code endIndex}.
      */
+    //返回子字符串
     public String substring(int beginIndex, int endIndex) {
         if (beginIndex < 0) {
             throw new StringIndexOutOfBoundsException(beginIndex);
@@ -2023,6 +2028,7 @@ public final class String
      * @return  a string that represents the concatenation of this object's
      *          characters followed by the string argument's characters.
      */
+    //字符串拼接  返回一个新的字符串
     public String concat(String str) {
         int otherLen = str.length();
         if (otherLen == 0) {
@@ -2063,6 +2069,7 @@ public final class String
      * @return  a string derived from this string by replacing every
      *          occurrence of {@code oldChar} with {@code newChar}.
      */
+    //字符串代替 拷贝内部字符数组， 比较替换字符 在创建新字符串
     public String replace(char oldChar, char newChar) {
         if (oldChar != newChar) {
             int len = value.length;
@@ -2326,6 +2333,7 @@ public final class String
      * @since 1.4
      * @spec JSR-51
      */
+    //拆分字符串
     public String[] split(String regex, int limit) {
         /* fastpath if the regex is a
          (1)one-char String and this character is not one of the
@@ -2447,6 +2455,7 @@ public final class String
      * @see java.util.StringJoiner
      * @since 1.8
      */
+    //用特定符号连接字符串
     public static String join(CharSequence delimiter, CharSequence... elements) {
         Objects.requireNonNull(delimiter);
         Objects.requireNonNull(elements);
@@ -2558,6 +2567,7 @@ public final class String
      * @see     java.lang.String#toUpperCase(Locale)
      * @since   1.1
      */
+    //转小写
     public String toLowerCase(Locale locale) {
         if (locale == null) {
             throw new NullPointerException();
@@ -2718,6 +2728,7 @@ public final class String
      * @see     java.lang.String#toLowerCase(Locale)
      * @since   1.1
      */
+    //转大写
     public String toUpperCase(Locale locale) {
         if (locale == null) {
             throw new NullPointerException();
@@ -2864,6 +2875,7 @@ public final class String
      *          space removed, or this string if it has no leading or
      *          trailing white space.
      */
+    //去掉字符串首尾的空字符串
     public String trim() {
         int len = value.length;
         int st = 0;
@@ -2936,6 +2948,7 @@ public final class String
      * @see  java.util.Formatter
      * @since  1.5
      */
+    //填充字符串内部的占位符
     public static String format(String format, Object... args) {
         return new Formatter().format(format, args).toString();
     }
@@ -3164,5 +3177,6 @@ public final class String
      * @return  a string that has the same contents as this string, but is
      *          guaranteed to be from a pool of unique strings.
      */
+    //返回相等的缓存的字符串对象
     public native String intern();
 }

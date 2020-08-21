@@ -94,6 +94,7 @@ import java.util.Arrays;
  * @see     java.lang.String
  * @since   JDK1.0
  */
+//线程安全的字符串构造类 所有操作都通过synchronized关键字保证线程安全
  public final class StringBuffer
     extends AbstractStringBuilder
     implements java.io.Serializable, CharSequence
@@ -103,6 +104,7 @@ import java.util.Arrays;
      * A cache of the last value returned by toString. Cleared
      * whenever the StringBuffer is modified.
      */
+    //保存数组
     private transient char[] toStringCache;
 
     /** use serialVersionUID from JDK 1.0.2 for interoperability */
@@ -257,6 +259,7 @@ import java.util.Arrays;
         value[index] = ch;
     }
 
+    /*************************************字符串拼接方法***********************/
     @Override
     public synchronized StringBuffer append(Object obj) {
         toStringCache = null;
@@ -343,6 +346,7 @@ import java.util.Arrays;
      * @throws IndexOutOfBoundsException {@inheritDoc}
      * @since      1.5
      */
+    //使用synchronized保证线程安全
     @Override
     public synchronized StringBuffer append(CharSequence s, int start, int end)
     {
@@ -351,6 +355,7 @@ import java.util.Arrays;
         return this;
     }
 
+    //
     @Override
     public synchronized StringBuffer append(char[] str) {
         toStringCache = null;
