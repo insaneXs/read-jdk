@@ -57,7 +57,7 @@ public class Vector<E>
      *
      * @serial
      */
-    protected int capacityIncrement;
+    protected int capacityIncrement; //数组不够时，容量增长的大小，默认为0时 数组的增加会采用增长一倍扩容的方式
 
     /** use serialVersionUID from JDK 1.0.2 for interoperability */
     private static final long serialVersionUID = -2767605614048989439L;
@@ -71,6 +71,11 @@ public class Vector<E>
      *                              increased when the vector overflows
      * @throws IllegalArgumentException if the specified initial capacity
      *         is negative
+     */
+    /**
+     * Vector构造函数
+     * @param initialCapacity 初始容量
+     * @param capacityIncrement 扩容时增长的容量
      */
     public Vector(int initialCapacity, int capacityIncrement) {
         super();
@@ -186,7 +191,7 @@ public class Vector<E>
      */
     private static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
 
-    //扩容
+    //扩容 默认是通过2倍方式扩容
     private void grow(int minCapacity) {
         // overflow-conscious code
         int oldCapacity = elementData.length;
