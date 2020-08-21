@@ -777,6 +777,7 @@ public final class Integer extends Number implements Comparable<Integer> {
      * sun.misc.VM class.
      */
 
+    //内部缓存类 默认的非new创建的Integer对象 如果范围在-128-127之前 那么会先从缓存中取 使用参数可以调整最大值
     private static class IntegerCache {
         static final int low = -128;
         static final int high;
@@ -826,9 +827,12 @@ public final class Integer extends Number implements Comparable<Integer> {
      * @return an {@code Integer} instance representing {@code i}.
      * @since  1.5
      */
+    //自动装箱的实现
     public static Integer valueOf(int i) {
+        //如果缓存的范围在缓存的范围内  先从缓存中取
         if (i >= IntegerCache.low && i <= IntegerCache.high)
             return IntegerCache.cache[i + (-IntegerCache.low)];
+        //否则创建一个新对象
         return new Integer(i);
     }
 
@@ -889,6 +893,7 @@ public final class Integer extends Number implements Comparable<Integer> {
      * Returns the value of this {@code Integer} as an
      * {@code int}.
      */
+    //自动拆箱的原理
     public int intValue() {
         return value;
     }

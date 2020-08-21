@@ -128,6 +128,7 @@ public final class Boolean implements java.io.Serializable,
      *
      * @return  the primitive {@code boolean} value of this object.
      */
+    //自动拆箱的原理
     public boolean booleanValue() {
         return value;
     }
@@ -146,6 +147,7 @@ public final class Boolean implements java.io.Serializable,
      * @return a {@code Boolean} instance representing {@code b}.
      * @since  1.4
      */
+    //制动装箱的原理
     public static Boolean valueOf(boolean b) {
         return (b ? TRUE : FALSE);
     }
