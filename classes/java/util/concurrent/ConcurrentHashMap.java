@@ -445,7 +445,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 if ((ek = e.key) == key || (ek != null && key.equals(ek)))
                     return e.val;
             }
-            //哈希值小于0 说明节点正在迁移或是为树节点
+            //哈希值小于0 说明节点正在迁移或是为树节点 为ForwardNode或是TreeBin 可以以多态的方式由不同实现根据不同的情况去查找
             else if (eh < 0)
                 return (p = e.find(h, key)) != null ? p.val : null;
             //正常链表的查询
@@ -538,7 +538,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 synchronized (f) {
                     //同步块内在做一次检查
                     if (tabAt(tab, i) == f) {//说明头节点未发生改变，如果发生改变，则直接退出同步块，并再次尝试
-                        if (fh >= 0) {
+                        if (fh >= 0) { //哈希值大于0 说明是tab[i]上放的是链表 因为对于红黑树而言 tab[i]上放的是TreeBin一个虚拟的节点 其哈希值固定为-2
                             binCount = 1;
                             for (Node<K,V> e = f;; ++binCount) {
                                 //查询链表，如果存在相同key，则更新，否则插入新节点
@@ -1658,32 +1658,42 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * 用特殊类型表示已经转移过的节点
      */
     static final class ForwardingNode<K,V> extends Node<K,V> {
+        //记录正在迁移的新数组
         final Node<K,V>[] nextTable;
         ForwardingNode(Node<K,V>[] tab) {
+            //其哈希值是MOVED（-2） 用来表示特殊含义
             super(MOVED, null, null, null);
             this.nextTable = tab;
         }
 
         Node<K,V> find(int h, Object k) {
             // loop to avoid arbitrarily deep recursion on forwarding nodes
+            //查找ForwardingNode指向的新数组
             outer: for (Node<K,V>[] tab = nextTable;;) {
                 Node<K,V> e; int n;
+                //如果新数组为空 或 查找的key为空 或者对应的桶上无数据 => 返回null
                 if (k == null || tab == null || (n = tab.length) == 0 ||
                     (e = tabAt(tab, (n - 1) & h)) == null)
                     return null;
+                //查找比较节点
                 for (;;) {
                     int eh; K ek;
+                    //判断是都就是该节点
                     if ((eh = e.hash) == h &&
                         ((ek = e.key) == k || (ek != null && k.equals(ek))))
                         return e;
+                    //如果节点的哈希值小于0  说明该节点为ForwardingNode 或是 TreeBin 这类虚拟节点
                     if (eh < 0) {
+                        //如果是forwardingNode 继续在其指向的数组中找
                         if (e instanceof ForwardingNode) {
                             tab = ((ForwardingNode<K,V>)e).nextTable;
                             continue outer;
                         }
+                        //否则遍历红黑树查找
                         else
                             return e.find(h, k);
                     }
+                    //如果是链表 则往下查找
                     if ((e = e.next) == null)
                         return null;
                 }
@@ -1762,6 +1772,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     private final void addCount(long x, int check) {
         CounterCell[] as; long b, s;
 
+        //???
         if ((as = counterCells) != null ||
             !U.compareAndSwapLong(this, BASECOUNT, b = baseCount, s = b + x)) {
             CounterCell a; long v; int m;
@@ -1783,15 +1794,31 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
             //不断CAS重试
             while (s >= (long)(sc = sizeCtl) && (tab = table) != null &&
                    (n = tab.length) < MAXIMUM_CAPACITY) {//需要resize
+                //为每个size生成一个独特的stamp 这个stamp的第16为必为1 后15位针对每个n都是一个特定的值 表示n最高位的1前面有几个零
                 int rs = resizeStamp(n);
+                //sc会在库容时变成 rs << RESIZE_STAMP_SHIFT + 2;上面说了rs的第16位为1 因此在左移16位后 该位的1会到达符号位 因此在扩容是sc会成为一个负数
+                //而后16位用来记录参与扩容的线程数
+                //此时sc < 0 说明正在扩
                 if (sc < 0) {
+                    /**
+                     * 分别对五个条件进行说明
+                     * sc >>> RESIZE_STAMP_SHIFT != rs 取sc的高16位 如果!=rs 则说明HashMap底层数据的n已经发生了变化
+                     * sc == rs + 1  此处可能有问题  我先按自己的理解 觉得应该是  sc == rs << RESIZE_STAMP_SHIFT + 1; 因为开始transfer时 sc = rs << RESIZE_STAMP_SHIFT + 2（一条线程在扩容，且之后有新线程参与扩容sc均会加1，而一条线程完成后sc - 1）说明是参与transfer的线程已经完成了transfer
+                     * 同理sc == rs + MAX_RESIZERS 这个应该也改为 sc = rs << RESIZE_STAMP_SHIFT + MAX_RESIZERS 表示参与迁移的线程已经到达最大数量 本线程可以不用参与
+                     * (nt = nextTable) == null 首先nextTable是在扩容中间状态才使用的数组（这一点和redis的渐进式扩容方式很像） 当nextTable 重新为null时 说明transfer 已经finish
+                     * transferIndex <= 0 也是同理
+                     * 遇上以上这些情况 说明此线程都不需要参与transfer的工作
+                     * PS: 翻了下JDK16的代码 这部分已经改掉了 rs = resizeStamp(n) << RESIZE_STAMP_SHIFT 证明我们的猜想应该是正确的
+                     */
                     if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
                         sc == rs + MAX_RESIZERS || (nt = nextTable) == null ||
                         transferIndex <= 0)
                         break;
+                    //否则该线程需要一起transfer
                     if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1))
                         transfer(tab, nt);
                 }
+                //说明没有其他线程正在扩容 该线程会将sizeCtl设置为负数 表示正在扩容
                 else if (U.compareAndSwapInt(this, SIZECTL, sc,
                                              (rs << RESIZE_STAMP_SHIFT) + 2))
                     transfer(tab, null);
@@ -1824,13 +1851,17 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     }
 
 
-    //扩容操作
+    //如果链表树化时底层数组容量没到64 则先尝试扩容操作
     private final void tryPresize(int size) {
         //计算capacity
         int c = (size >= (MAXIMUM_CAPACITY >>> 1)) ? MAXIMUM_CAPACITY :
             tableSizeFor(size + (size >>> 1) + 1);
         int sc;
+
+        //说明没有其他线程在扩容
+        //也就是说tryPresize和addCount中不同 在遇到已经有线程在扩容时，addCount会加入帮助transfer 而tryPresize则不会
         while ((sc = sizeCtl) >= 0) {
+
             Node<K,V>[] tab = table; int n;
             if (tab == null || (n = tab.length) == 0) {//还未初始化
                 n = (sc > c) ? sc : c;
@@ -1847,11 +1878,14 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     }
                 }
             }
+
             else if (c <= sc || n >= MAXIMUM_CAPACITY) //扩容结束或是无需扩容
                 break;
             else if (tab == table) {
                 int rs = resizeStamp(n);
-                if (sc < 0) { //其它线程也在扩容
+                //if (sc < 0) 这个判断分支应该是个无效代码 因为while(sc>=0)大循环条件已经在那了
+                //PS: JDK9中这部分代码确实已经被移除了
+                if (sc < 0) {
                     Node<K,V>[] nt;
                     if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
                         sc == rs + MAX_RESIZERS || (nt = nextTable) == null ||
@@ -1860,6 +1894,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1))
                         transfer(tab, nt);
                 }
+                //让线程加入扩容
                 else if (U.compareAndSwapInt(this, SIZECTL, sc,
                                              (rs << RESIZE_STAMP_SHIFT) + 2))
                     transfer(tab, null);
@@ -1875,24 +1910,28 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         int n = tab.length, stride;
         if ((stride = (NCPU > 1) ? (n >>> 3) / NCPU : n) < MIN_TRANSFER_STRIDE)
             stride = MIN_TRANSFER_STRIDE; // subdivide range
-        if (nextTab == null) {            // initiating
+        if (nextTab == null) {            // initiating //nextTab等于null表示第一个进来扩容的线程
             try {
                 @SuppressWarnings("unchecked")
-                Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n << 1];
+                Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n << 1]; //第一个线程需要对扩容的数组翻倍
                 nextTab = nt;
             } catch (Throwable ex) {      // try to cope with OOME
                 sizeCtl = Integer.MAX_VALUE;
                 return;
             }
+            //用nextTable和transferIndex表示扩容的中间状态
             nextTable = nextTab;
             transferIndex = n;
         }
         int nextn = nextTab.length;
         ForwardingNode<K,V> fwd = new ForwardingNode<K,V>(nextTab);
-        boolean advance = true;
-        boolean finishing = false; // to ensure sweep before committing nextTab
+        boolean advance = true; // advance 表示是否可以继续执行下一个stride
+        boolean finishing = false; // to ensure sweep before committing nextTab finish表示transfer是否已经完成 nextTable已经替换了table
+
+        //开始转移各个槽
         for (int i = 0, bound = 0;;) {
             Node<K,V> f; int fh;
+            //STEP1  判断是否可以进入下一个stride 确认i和bound
             //通过stride领取一部分的transfer任务，while循环就是确认边界
             while (advance) {
                 int nextIndex, nextBound;
@@ -1911,17 +1950,26 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     advance = false;
                 }
             }
+
+            /**
+             * i < 0 说明要转移的桶 都已经处理过了
+             *
+             *
+             * 以上条件已经说明 transfer已经完成了
+             */
             if (i < 0 || i >= n || i + n >= nextn) { //transfer 结束
                 int sc;
-                if (finishing) {
+                if (finishing) {//如果完成整个 transfer的过程 清空nextTable 让table等于扩容后的数组
                     nextTable = null;
                     table = nextTab;
                     sizeCtl = (n << 1) - (n >>> 1); //0.75f * n 重新计算下次扩容的阈值
                     return;
                 }
                 if (U.compareAndSwapInt(this, SIZECTL, sc = sizeCtl, sc - 1)) {//一个线程完成了transfer
+                    //如果还有其他线程在transfer 先返回
                     if ((sc - 2) != resizeStamp(n) << RESIZE_STAMP_SHIFT)
                         return;
+                    //说明这是最后一个在transfer的线程 因此finish标志被置为 true
                     finishing = advance = true;
                     i = n; // recheck before commit
                 }
@@ -1937,6 +1985,10 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         if (fh >= 0) { //普通链表
                             int runBit = fh & n;
                             Node<K,V> lastRun = f;
+                            //这一次遍历的目的是找到最后一个一个节点，其后的节点hash & N 都不发生改变
+                            //例如 有A->B->C->D,其hash & n 为 0,1,1,1 那就是找到B点
+                            //这样做的目的是之后对链表进行拆分时 C和D不需要单独处理 维持和B的关系 B移动到新的tab[i]或tab[i+cap]上即可
+                            //还有不理解的可以参考我的测试代码：https://github.com/insaneXs/all-mess/blob/master/src/main/java/com/insanexs/mess/collection/TestConHashMapSeq.java
                             for (Node<K,V> p = f.next; p != null; p = p.next) {
                                 int b = p.hash & n;
                                 if (b != runBit) {
@@ -1944,23 +1996,29 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                     lastRun = p;
                                 }
                             }
+                            //如果runBit == 0 说明之前找到的节点应该在tab[i]
                             if (runBit == 0) {
                                 ln = lastRun;
                                 hn = null;
                             }
+                            //否则说明之前的节点在tab[i+cap]
                             else {
                                 hn = lastRun;
                                 ln = null;
                             }
+                            //上面分析了链表的拆分只用遍历到lastRun的前一节点 因为lastRun及之后的节点已经移动好了
                             for (Node<K,V> p = f; p != lastRun; p = p.next) {
                                 int ph = p.hash; K pk = p.key; V pv = p.val;
+                                //这里不再继续使用尾插法而是改用了头插法 因此链表的顺序可能会发生颠倒(lastRun及之后的节点不受影响)
                                 if ((ph & n) == 0)
                                     ln = new Node<K,V>(ph, pk, pv, ln);
                                 else
                                     hn = new Node<K,V>(ph, pk, pv, hn);
                             }
+                            //将新的链表移动到nextTab的对应坐标中
                             setTabAt(nextTab, i, ln);
                             setTabAt(nextTab, i + n, hn);
+                            //tab上对应坐标的节点变为ForwardingNode
                             setTabAt(tab, i, fwd);
                             advance = true;
                         }
