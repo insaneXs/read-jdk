@@ -91,7 +91,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
     private static final long serialVersionUID = -817911632652898426L;
 
     /** The queued items */
-    //底层数组，队列为了保证效率，队首的
+    //底层数组
     final Object[] items;
     //队列为了保证效率（不因为队首元素移除而每次进行数组移动），用takeIndex表示队首元素所在的下标
     /** items index for next take, poll, peek or remove */
@@ -511,7 +511,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
                 //等待未空的信号
                 nanos = notEmpty.awaitNanos(nanos);
             }
-            //让队尾元素出队
+            //让队首元素出队
             return dequeue();
         } finally {
             //释放锁
@@ -520,7 +520,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
     }
 
     /**
-     * 返回队尾元素（不移除）
+     * 返回队首元素（不移除）
      * @return
      */
     public E peek() {
@@ -735,7 +735,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * @throws NullPointerException if the specified array is null
      */
     @SuppressWarnings("unchecked")
-    //专程数组
+    //转成数组
     public <T> T[] toArray(T[] a) {
         final Object[] items = this.items;
         final ReentrantLock lock = this.lock;
