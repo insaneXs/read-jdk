@@ -67,10 +67,16 @@ import java.util.*;
  * @author Doug Lea
  * @param <E> the type of elements held in this collection
  */
+
+/**
+ * 延迟队列 队列中的元素必须要实现Delayed的接口
+ */
 public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
     implements BlockingQueue<E> {
 
+    //主锁 保证线程安全
     private final transient ReentrantLock lock = new ReentrantLock();
+    //优先级队列 通过优先级队列可以方便的获取到下一个就绪的元素
     private final PriorityQueue<E> q = new PriorityQueue<E>();
 
     /**
@@ -89,6 +95,9 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
      * signalled.  So waiting threads must be prepared to acquire
      * and lose leadership while waiting.
      */
+    //这里使用了Leader-Follower模式 只有抢到leader的线程才能够在下一次就绪时获取队首的元素
+    //而其他的线程只能够在有条件是争抢成为leader
+    //个人理解是这种模式能让不同的线程要做什么事更加清晰
     private Thread leader = null;
 
     /**
@@ -96,6 +105,7 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
      * at the head of the queue or a new thread may need to
      * become leader.
      */
+    //当队列中有元素时的唤醒信号
     private final Condition available = lock.newCondition();
 
     /**
@@ -133,12 +143,17 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
      * @return {@code true}
      * @throws NullPointerException if the specified element is null
      */
+    //添加元素
     public boolean offer(E e) {
+        //上锁
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
+            //往优先级队列中添加元素
             q.offer(e);
+            //如果队首元素即为添加的元素 说明队列有空转为非空
             if (q.peek() == e) {
+                //触发信号
                 leader = null;
                 available.signal();
             }
@@ -180,13 +195,18 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
      * @return the head of this queue, or {@code null} if this
      *         queue has no elements with an expired delay
      */
+    //从队列中取出队首的元素 如果队列中没有元素 或是 队首的元素 还没过期 则返回null
     public E poll() {
+        //上锁
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
+            //获取队首元素
             E first = q.peek();
+            //如果队首元素为null 或是 队首元素还没过期 则返回null
             if (first == null || first.getDelay(NANOSECONDS) > 0)
                 return null;
+            //否则取出队首元素 并返回
             else
                 return q.poll();
         } finally {
@@ -201,22 +221,28 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
      * @return the head of this queue
      * @throws InterruptedException {@inheritDoc}
      */
+    //取队首元素 阻塞直到获取元素
     public E take() throws InterruptedException {
         final ReentrantLock lock = this.lock;
         lock.lockInterruptibly();
         try {
             for (;;) {
+                //返回队首元素
                 E first = q.peek();
+                //如果队首元素 == null 等待队列非空的信号量
                 if (first == null)
                     available.await();
-                else {
+                else { //否则检查队首元素是否已经到过期事件
                     long delay = first.getDelay(NANOSECONDS);
+                    //如果已经到达过期事件 移除队首得意严肃并返回
                     if (delay <= 0)
                         return q.poll();
                     first = null; // don't retain ref while waiting
+                    //如果该线程非leader线程 那么进入等待 在下次醒来是尝试争抢成为leader
                     if (leader != null)
                         available.await();
                     else {
+                        //如果已经是leader
                         Thread thisThread = Thread.currentThread();
                         leader = thisThread;
                         try {
@@ -229,11 +255,64 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
                 }
             }
         } finally {
+            //leader取值完成后 需要环形其他follower 竞争成为新的leader
             if (leader == null && q.peek() != null)
                 available.signal();
+            //释放锁
             lock.unlock();
         }
     }
+    /**************以下这部分注释的代码是我根据对Leader-Follower模式的理解 对take()方法的改版(严格按模式来，而非变体)******************/
+    /**
+     * 改为严格意义上的 LEADER_FOLLOWER 模式
+     * 源代码中的方式使用的是该模式的变体 其中Follower(或者说非leader的线程)唤醒后可能先于Leader抢到锁 而返回
+     * 此方法则是线程必须先判断是否为Leader 不是只能进入等待 期待下次先升级成Leader
+     * 只有Leader才能取走元素
+     */
+//    public E take() throws InterruptedException {
+//        final ReentrantLock lock = this.lock;
+//        lock.lockInterruptibly();
+//        Thread thisThread = Thread.currentThread();
+//        try {
+//            for (;;) {
+//                //每次进入循环 都需要先确认是否有机会争抢成为leader 没有机会则进入等待 由leader唤醒
+//                if (leader != null && leader != thisThread) {
+//                    available.await();
+//                } else {
+//                    //如果没有leader 升级成为leader
+//                    if (leader == null) {
+//                        leader = thisThread;
+//                    }
+//                    //这里说明自己就是leader 可以确认队列中是否已经由元素就绪
+//                    E first = q.peek();
+//                    //如果队列没有元素进入等待
+//                    if (first == null)
+//                        available.await();
+//                    else {//否则检查队首元素是否已经就绪
+//                        long delay = first.getDelay(NANOSECONDS);
+//                        if (delay <= 0)
+//                            return q.poll();
+//                        first = null; // don't retain ref while waiting
+//                        //等待到元素就绪的时间点
+//                        available.awaitNanos(delay);
+//                    }
+//                }
+//            }
+//        } finally {
+//            //leader退出时
+//            if(leader == thisThread){
+//                //让出leader
+//                leader = null;
+//                //如果队列不为空 负责唤醒follower
+//                if(q.peek() != null){
+//                    available.signal();
+//                }
+//            }
+//            //释放锁
+//            lock.unlock();
+//        }
+//    }
+
 
     /**
      * Retrieves and removes the head of this queue, waiting if necessary
