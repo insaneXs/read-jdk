@@ -776,6 +776,7 @@ public class ForkJoinPool extends AbstractExecutorService {
      * JVMs to try to keep instances apart.
      */
     @sun.misc.Contended
+    //工作队列 是个双端队列
     static final class WorkQueue {
 
         /**
@@ -804,12 +805,15 @@ public class ForkJoinPool extends AbstractExecutorService {
         int nsteals;               // number of steals
         int hint;                  // randomization and stealer index hint
         int config;                // pool index and mode
+
         volatile int qlock;        // 1: locked, < 0: terminate; else 0
         volatile int base;         // index of next slot for poll
         int top;                   // index of next slot for push
         //队列的内部实现是数组
         ForkJoinTask<?>[] array;   // the elements (initially unallocated)
+        //关联的ForkJoinPool
         final ForkJoinPool pool;   // the containing pool (may be null)
+        //这个工作队列所属的线程
         final ForkJoinWorkerThread owner; // owning thread or null if shared
         volatile Thread parker;    // == owner during call to park; else null
         volatile ForkJoinTask<?> currentJoin;  // task being joined in awaitJoin
@@ -861,14 +865,19 @@ public class ForkJoinPool extends AbstractExecutorService {
         final void push(ForkJoinTask<?> task) {
             ForkJoinTask<?>[] a; ForkJoinPool p;
             int b = base, s = top, n;
+            //如果队列不为空
             if ((a = array) != null) {    // ignore if queue removed
+                //添加任务
                 int m = a.length - 1;     // fenced write for task visibility
+                //更新TOP值
                 U.putOrderedObject(a, ((m & s) << ASHIFT) + ABASE, task);
                 U.putOrderedInt(this, QTOP, s + 1);
+                //
                 if ((n = s - b) <= 1) {
                     if ((p = pool) != null)
                         p.signalWork(p.workQueues, this);
                 }
+                //数组扩容
                 else if (n >= m)
                     growArray();
             }
@@ -879,6 +888,7 @@ public class ForkJoinPool extends AbstractExecutorService {
          * by owner or with lock held -- it is OK for base, but not
          * top, to move while resizings are in progress.
          */
+        //数组扩容
         final ForkJoinTask<?>[] growArray() {
             ForkJoinTask<?>[] oldA = array;
             int size = oldA != null ? oldA.length << 1 : INITIAL_QUEUE_CAPACITY;
@@ -906,6 +916,7 @@ public class ForkJoinPool extends AbstractExecutorService {
          * Takes next task, if one exists, in LIFO order.  Call only
          * by owner in unshared queues.
          */
+        //弹出一个元素(队尾)
         final ForkJoinTask<?> pop() {
             ForkJoinTask<?>[] a; ForkJoinTask<?> t; int m;
             if ((a = array) != null && (m = a.length - 1) >= 0) {
@@ -943,6 +954,7 @@ public class ForkJoinPool extends AbstractExecutorService {
         /**
          * Takes next task, if one exists, in FIFO order.
          */
+        //从队首取出元素
         final ForkJoinTask<?> poll() {
             ForkJoinTask<?>[] a; int b; ForkJoinTask<?> t;
             while ((b = base) - top < 0 && (a = array) != null) {
@@ -985,6 +997,7 @@ public class ForkJoinPool extends AbstractExecutorService {
          * Pops the given task only if it is at the current top.
          * (A shared version is available only via FJP.tryExternalUnpush)
         */
+        //只有当给定任务在队列尾部时 才弹出
         final boolean tryUnpush(ForkJoinTask<?> t) {
             ForkJoinTask<?>[] a; int s;
             if ((a = array) != null && (s = top) != base &&
@@ -1390,7 +1403,10 @@ public class ForkJoinPool extends AbstractExecutorService {
 
     // Instance fields
     volatile long ctl;                   // main pool control
+
+    //表示线程运行状态
     volatile int runState;               // lockable status
+    //用来记录池的并行登记和模式
     final int config;                    // parallelism, mode
     int indexSeed;                       // to generate worker index
     //工作队列数组（每个线程内部的workQueue的一个集合）

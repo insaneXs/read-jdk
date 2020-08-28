@@ -209,6 +209,7 @@ import java.lang.reflect.Constructor;
  * @since 1.7
  * @author Doug Lea
  */
+//用于ForkJoinPool中的特殊的任务(轻量级的类线程实体)
 public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
 
     /*
@@ -248,11 +249,15 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      */
 
     /** The run status of this task */
+    //任务的状态
     volatile int status; // accessed directly by pool and workers
-    static final int DONE_MASK   = 0xf0000000;  // mask out non-completion bits
+    static final int DONE_MASK   = 0xf0000000;  // mask out non-completion bits //这个掩码可以获取任务完成状态的标识(屏蔽后28位)
+    //任务状态
     static final int NORMAL      = 0xf0000000;  // must be negative
     static final int CANCELLED   = 0xc0000000;  // must be < NORMAL
     static final int EXCEPTIONAL = 0x80000000;  // must be < CANCELLED
+
+
     static final int SIGNAL      = 0x00010000;  // must be >= 1 << 16
     static final int SMASK       = 0x0000ffff;  // short bits for tags
 
@@ -263,11 +268,15 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      * @param completion one of NORMAL, CANCELLED, EXCEPTIONAL
      * @return completion status on exit
      */
+    //更新任务完成状态
     private int setCompletion(int completion) {
         for (int s;;) {
+            //状态小于0 说明已经完成
             if ((s = status) < 0)
                 return s;
+            //CAS更新任务的状态
             if (U.compareAndSwapInt(this, STATUS, s, s | completion)) {
+                //对照上文SIGNAL的含义 应该是高16位有数据 就需要唤醒
                 if ((s >>> 16) != 0)
                     synchronized (this) { notifyAll(); }
                 return completion;
@@ -282,14 +291,19 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return status on exit from this method
      */
+    //任务执行的主要逻辑
     final int doExec() {
         int s; boolean completed;
+        //说明任务没完成
         if ((s = status) >= 0) {
             try {
+                //exec()应该是执行任务(由子类拓展)
                 completed = exec();
             } catch (Throwable rex) {
+                //如果执行过程中异常 记录异常状态
                 return setExceptionalCompletion(rex);
             }
+            //执行后 任务完成 则更新任务的状态位NORMAL
             if (completed)
                 s = setCompletion(NORMAL);
         }
@@ -302,14 +316,18 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @param timeout using Object.wait conventions.
      */
+    //如果任务还没完成 进行等待
     final void internalWait(long timeout) {
         int s;
+        //任务未完成 且 CAS更新状态SIGNAL成功
         if ((s = status) >= 0 && // force completer to issue notify
             U.compareAndSwapInt(this, STATUS, s, s | SIGNAL)) {
+            //上锁 看任务是否完成
             synchronized (this) {
+                //未完成 进入等待
                 if (status >= 0)
                     try { wait(timeout); } catch (InterruptedException ie) { }
-                else
+                else //已完成 唤醒其他等待的线程
                     notifyAll();
             }
         }
@@ -320,10 +338,12 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      * @return status upon completion
      */
     private int externalAwaitDone() {
+        //不是很理解？ 应该是由外部ForkJoinPool.common这个共有的ForkJoinPool执行还是自己执行？
         int s = ((this instanceof CountedCompleter) ? // try helping
                  ForkJoinPool.common.externalHelpComplete(
                      (CountedCompleter<?>)this, 0) :
                  ForkJoinPool.common.tryExternalUnpush(this) ? doExec() : 0);
+        //这里的逻辑和internalWait很像 应该是等待任务执行完成
         if (s >= 0 && (s = status) >= 0) {
             boolean interrupted = false;
             do {
@@ -350,6 +370,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
     /**
      * Blocks a non-worker-thread until completion or interruption.
      */
+    //和上个方法相同 只是这个会抛出终端异常
     private int externalInterruptibleAwaitDone() throws InterruptedException {
         int s;
         if (Thread.interrupted())
@@ -381,13 +402,20 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return status upon completion
      */
+    //Join方法的核心
     private int doJoin() {
         int s; Thread t; ForkJoinWorkerThread wt; ForkJoinPool.WorkQueue w;
+        //这里比较复杂 我们一行行分析
+        //1.首先 如果s < 0 说明已经完成 返回s
         return (s = status) < 0 ? s :
+                //2.否则如果当前线程就是ForkJoinWorkerThread 说明可以由该线程执行
             ((t = Thread.currentThread()) instanceof ForkJoinWorkerThread) ?
+                    //那么继续看此任务是否在该线程的工作队列中是否为下一个任务 执行该任务并返回
             (w = (wt = (ForkJoinWorkerThread)t).workQueue).
             tryUnpush(this) && (s = doExec()) < 0 ? s :
+                    //等待任务执行
             wt.pool.awaitJoin(w, this, 0L) :
+                    //这里说明此线程不是ForkJoinWorkerThread 那就有common的ForkJoinPool 帮助执行
             externalAwaitDone();
     }
 
@@ -396,12 +424,17 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return status upon completion
      */
+    //invoke的核心方法
     private int doInvoke() {
         int s; Thread t; ForkJoinWorkerThread wt;
+        //先由当前线程执行
         return (s = doExec()) < 0 ? s :
+                //如果当前线程是ForkJoinWorkerThread
             ((t = Thread.currentThread()) instanceof ForkJoinWorkerThread) ?
+                    //就有该线程关联的ForkJoinPool执行 并等待结果
             (wt = (ForkJoinWorkerThread)t).pool.
             awaitJoin(wt.workQueue, this, 0L) :
+                    //否则就由外部的共用的ForkJoinPool执行
             externalAwaitDone();
     }
 
@@ -416,8 +449,11 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * Note: These statics are initialized below in static block.
      */
+    //全局的异常表数据
     private static final ExceptionNode[] exceptionTable;
+    //异常表锁
     private static final ReentrantLock exceptionTableLock;
+    //引用队列 这里的数据之后可能被清除
     private static final ReferenceQueue<Object> exceptionTableRefQueue;
 
     /**
@@ -437,6 +473,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      * any ForkJoinPool will call helpExpungeStaleExceptions when its
      * pool becomes isQuiescent.
      */
+    //异常节点 有指向下一节点的链表
     static final class ExceptionNode extends WeakReference<ForkJoinTask<?>> {
         final Throwable ex;
         ExceptionNode next;
@@ -458,12 +495,15 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      */
     final int recordExceptionalCompletion(Throwable ex) {
         int s;
+        //如果任务未完成
         if ((s = status) >= 0) {
             int h = System.identityHashCode(this);
             final ReentrantLock lock = exceptionTableLock;
             lock.lock();
             try {
+                //清除异常表中的异常信息
                 expungeStaleExceptions();
+                //在异常表记录异常
                 ExceptionNode[] t = exceptionTable;
                 int i = h & (t.length - 1);
                 for (ExceptionNode e = t[i]; ; e = e.next) {
@@ -477,6 +517,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
             } finally {
                 lock.unlock();
             }
+            //将状态标记为异常
             s = setCompletion(EXCEPTIONAL);
         }
         return s;
@@ -487,8 +528,11 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return status on exit
      */
+    //记录异常状态
     private int setExceptionalCompletion(Throwable ex) {
+        //记录异常状态
         int s = recordExceptionalCompletion(ex);
+        //传播异常
         if ((s & DONE_MASK) == EXCEPTIONAL)
             internalPropagateException(ex);
         return s;
@@ -610,6 +654,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
     /**
      * Poll stale refs and remove them. Call only while holding lock.
      */
+    //将引用队列中的异常从异常表中清除
     private static void expungeStaleExceptions() {
         for (Object x; (x = exceptionTableRefQueue.poll()) != null;) {
             if (x instanceof ExceptionNode) {
@@ -677,6 +722,10 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
             rethrow(getThrowableException());
     }
 
+
+
+    /*********************************以下是公有的API*******************************/
+
     // public methods
 
     /**
@@ -694,11 +743,14 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return {@code this}, to simplify usage
      */
+
+    //fork方法的主要作用就是将任务添加到工作队列（这里一般是添加内部任务 而非 外部提交的任务）
     public final ForkJoinTask<V> fork() {
         Thread t;
+        //如果当前线程就是ForkJoinWorkerThread 则添加到自己的工作队列
         if ((t = Thread.currentThread()) instanceof ForkJoinWorkerThread)
             ((ForkJoinWorkerThread)t).workQueue.push(this);
-        else
+        else //否则添加到公有ForkJoinPool的队列
             ForkJoinPool.common.externalPush(this);
         return this;
     }
@@ -714,6 +766,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return the computed result
      */
+    //JOIN 方法等待任务完成
     public final V join() {
         int s;
         if ((s = doJoin() & DONE_MASK) != NORMAL)
@@ -729,6 +782,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return the computed result
      */
+    //invoke方法 和join的区别是 invoke会先用自己的线程执行?
     public final V invoke() {
         int s;
         if ((s = doInvoke() & DONE_MASK) != NORMAL)
@@ -996,6 +1050,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      * @throws InterruptedException if the current thread is not a
      * member of a ForkJoinPool and was interrupted while waiting
      */
+    //get 和 join的区别是 可中断
     public final V get() throws InterruptedException, ExecutionException {
         int s = (Thread.currentThread() instanceof ForkJoinWorkerThread) ?
             doJoin() : externalInterruptibleAwaitDone();
@@ -1163,6 +1218,7 @@ public abstract class ForkJoinTask<V> implements Future<V>, Serializable {
      *
      * @return {@code true} if unforked
      */
+    //从工作队列中取出任务
     public boolean tryUnfork() {
         Thread t;
         return (((t = Thread.currentThread()) instanceof ForkJoinWorkerThread) ?
