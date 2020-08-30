@@ -67,7 +67,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
 
     /**
-     * 默认最大冰打等级
+     * 默认最大并发等级
      */
     private static final int DEFAULT_CONCURRENCY_LEVEL = 16;
 
@@ -288,6 +288,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     /**
      * The next table to use; non-null only while resizing.
      */
+    //扩容时 使用的另一个数组
     private transient volatile Node<K,V>[] nextTable;
 
     /**
@@ -295,6 +296,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * but also as a fallback during table initialization
      * races. Updated via CAS.
      */
+    //统计size的一部分
     private transient volatile long baseCount;
 
     /**
@@ -313,11 +315,13 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     /**
      * Spinlock (locked via CAS) used when resizing and/or creating CounterCells.
      */
+    //表示是否有线程正在修改CounterCells
     private transient volatile int cellsBusy;
 
     /**
      * Table of counter cells. When non-null, size is a power of 2.
      */
+    //用来统计size
     private transient volatile CounterCell[] counterCells;
 
     // views
@@ -1731,7 +1735,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         Node<K,V>[] tab; int sc;
         //同样 采用不断重试的方式，而非直接使用锁
         while ((tab = table) == null || tab.length == 0) {
-            //sizeCtl < 0 表示table正在被初始化或是reszie
+            //sizeCtl < 0 表示table正在被初始化或是resize
             if ((sc = sizeCtl) < 0)
                 //当前线程先等待
                 Thread.yield(); // lost initialization race; just spin
@@ -1772,7 +1776,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     private final void addCount(long x, int check) {
         CounterCell[] as; long b, s;
 
-        //???
+        //更新size
         if ((as = counterCells) != null ||
             !U.compareAndSwapLong(this, BASECOUNT, b = baseCount, s = b + x)) {
             CounterCell a; long v; int m;
@@ -2092,22 +2096,32 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     // See LongAdder version for explanation
     private final void fullAddCount(long x, boolean wasUncontended) {
         int h;
+        //初始化线程的探针
         if ((h = ThreadLocalRandom.getProbe()) == 0) {
             ThreadLocalRandom.localInit();      // force initialization
             h = ThreadLocalRandom.getProbe();
             wasUncontended = true;
         }
         boolean collide = false;                // True if last slot nonempty
+
+        //自循环 应该是辅助CAS的
         for (;;) {
             CounterCell[] as; CounterCell a; int n; long v;
+            //如果counterCells已经初始化
             if ((as = counterCells) != null && (n = as.length) > 0) {
+                //如果该下标上没有元素
                 if ((a = as[(n - 1) & h]) == null) {
+                    //没人在修改
                     if (cellsBusy == 0) {            // Try to attach new Cell
+                        //创建新的CounterCell
                         CounterCell r = new CounterCell(x); // Optimistic create
+                        //再CAS更新cellsBusy 争抢锁 表示要对CounterCells进行操作了
                         if (cellsBusy == 0 &&
                             U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+
                             boolean created = false;
                             try {               // Recheck under lock
+                                //再次检查 如果始终没被修改 则说明创建成功
                                 CounterCell[] rs; int m, j;
                                 if ((rs = counterCells) != null &&
                                     (m = rs.length) > 0 &&
@@ -2116,6 +2130,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                     created = true;
                                 }
                             } finally {
+                                //释放锁
                                 cellsBusy = 0;
                             }
                             if (created)
@@ -2127,14 +2142,14 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 }
                 else if (!wasUncontended)       // CAS already known to fail
                     wasUncontended = true;      // Continue after rehash
-                else if (U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))
+                else if (U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x)) //当下标下有元素时 更新CounterCells的value值
                     break;
                 else if (counterCells != as || n >= NCPU)
                     collide = false;            // At max size or stale
                 else if (!collide)
                     collide = true;
                 else if (cellsBusy == 0 &&
-                         U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+                         U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) { //进行对CounterCell的扩容
                     try {
                         if (counterCells == as) {// Expand table unless stale
                             CounterCell[] rs = new CounterCell[n << 1];
@@ -2148,24 +2163,32 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     collide = false;
                     continue;                   // Retry with expanded table
                 }
+                //如果都不行 说明这个下标的冲突比较严重 更新线程的探针
                 h = ThreadLocalRandom.advanceProbe(h);
             }
+            //说明countCells数组未初始化 CAS更新cellsBusy表示要修改countCells[] 这里的修改操作是初始化
             else if (cellsBusy == 0 && counterCells == as &&
                      U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
                 boolean init = false;
-                try {                           // Initialize table
+                try {
+                    // Initialize table
+                    //说明没被修改
                     if (counterCells == as) {
+                        //开始初始化 并将值放到某个下标中
                         CounterCell[] rs = new CounterCell[2];
                         rs[h & 1] = new CounterCell(x);
+                        //设置counterCells
                         counterCells = rs;
                         init = true;
                     }
-                } finally {
+                } finally {//操作完成 重置cellsBusy标志位
                     cellsBusy = 0;
                 }
+                //初始化成功 退出自旋
                 if (init)
                     break;
             }
+            //进入到这 说明counterCells未初始化 且希望对CounterCells操作时争抢cellsBusy失败了 那么就将此次数据更新先落到baseCount中记录
             else if (U.compareAndSwapLong(this, BASECOUNT, v = baseCount, v + x))
                 break;                          // Fall back on using base
         }
